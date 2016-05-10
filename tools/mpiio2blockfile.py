@@ -42,7 +42,11 @@ bondf = fpref + ".bond"
 # Determine nproc, etc. at time of writing
 nproc = os.stat(preff).st_size / 4
 ntotalpart = os.stat(idf).st_size / 4
-ntotalbond = os.stat(bondf).st_size / 4
+try:
+    ntotalbond = os.stat(bondf).st_size / 4
+    read_bonds = True
+except OSError:
+    read_bonds = False
 
 # Read header - fields, n_bonded_ia, bonded_ia_params[:].nums
 fields = 0
@@ -82,14 +86,15 @@ vel = array.array("d")
 with open(velf) as f:
     vel.read(f, 3 * ntotalpart)
 
-# Read bonds
-boff = array.array("i")
-with open(bofff) as f:
-    boff.read(f, ntotalpart + nproc)
+if read_bonds:
+    # Read bonds
+    boff = array.array("i")
+    with open(bofff) as f:
+        boff.read(f, ntotalpart + nproc)
 
-bond = array.array("i")
-with open(bondf) as f:
-    bond.read(f, ntotalbond)
+    bond = array.array("i")
+    with open(bondf) as f:
+        bond.read(f, ntotalbond)
 
 
 # Print particles in blockfile format
@@ -100,30 +105,31 @@ for i in xrange(ntotalpart):
            vel[3*i], vel[3*i+1], vel[3*i+2]))
 print("}")
 
-# Print bonds in blockfile format
-print("{bonds")
-addend = 0 # ntotal bonds of previous processors
-for rank in xrange(nproc):
-    # The start and end indices for the boff array are determined via
-    # pref. However, there are (nlocalpart + 1) boff entries per proc.
-    start = pref[rank] + rank
-    end = rank + (pref[rank + 1] if rank < nproc - 1 else ntotalpart)
-    for pid, i in enumerate(xrange(start, end)):
-        print("\t{%i { " % id[pref[rank] + pid], end="")
-        # The start and end indices for the bond array are determined
-        # via boff. However, boff does only *locally* store prefixes,
-        # i.e. they have to be globalized by adding the total number of
-        # bonds on all ranks before this one.
-        j = addend + boff[i]
-        while j < addend + boff[i + 1]:
-            bond_num = bond[j]
-            j += 1
-            npartners = biaparams[bond_num]
-            print("{%i" % bond_num, end="")
-            for _ in xrange(npartners):
-                print(" %i" % bond[j], end="")
+if read_bonds:
+    # Print bonds in blockfile format
+    print("{bonds")
+    addend = 0 # ntotal bonds of previous processors
+    for rank in xrange(nproc):
+        # The start and end indices for the boff array are determined via
+        # pref. However, there are (nlocalpart + 1) boff entries per proc.
+        start = pref[rank] + rank
+        end = rank + (pref[rank + 1] if rank < nproc - 1 else ntotalpart)
+        for pid, i in enumerate(xrange(start, end)):
+            print("\t{%i { " % id[pref[rank] + pid], end="")
+            # The start and end indices for the bond array are determined
+            # via boff. However, boff does only *locally* store prefixes,
+            # i.e. they have to be globalized by adding the total number of
+            # bonds on all ranks before this one.
+            j = addend + boff[i]
+            while j < addend + boff[i + 1]:
+                bond_num = bond[j]
                 j += 1
-            print("} ", end="")
-        print("} }")
-    addend += boff[end]
-print("}")
+                npartners = biaparams[bond_num]
+                print("{%i" % bond_num, end="")
+                for _ in xrange(npartners):
+                    print(" %i" % bond[j], end="")
+                    j += 1
+                print("} ", end="")
+            print("} }")
+        addend += boff[end]
+    print("}")
