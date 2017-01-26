@@ -119,7 +119,7 @@ void check_forces()
   }
 }
 
-void force_calc()
+void f_force_calc()
 {
   // Communication step: distribute ghost positions
   cells_update_ghosts();
@@ -247,6 +247,28 @@ espressoSystemInterface.update();
   // mark that forces are now up-to-date
   recalc_forces = 0;
 
+}
+
+void force_calc()
+{
+  double timestart = MPI_Wtime();
+
+  f_force_calc();
+
+  double t = MPI_Wtime() - timestart;
+  int nnodes, myrank;
+  MPI_Comm_size(MPI_COMM_WORLD, &nnodes);
+  MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+  std::vector<double> ts(nnodes);
+  MPI_Gather(&t, 1, MPI_DOUBLE, ts.data(), 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  if (myrank == 0) {
+      FILE *f = fopen("times.out", "a");
+      fprintf(f, "%lf", ts[0]);
+      for (int i = 1; i < nnodes; ++i)
+          fprintf(f, " %lf", ts[i]);
+      fputc('\n', f);
+      fclose(f);
+  }
 }
 
 void calc_long_range_forces()
