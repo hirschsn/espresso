@@ -1,8 +1,8 @@
 file(GLOB ImmersedBoundary_SRC *.cpp)
-add_library(ImmersedBoundary SHARED ${ImmersedBoundary_SRC})
+add_library(ImmersedBoundary ${ImmersedBoundary_SRC})
 set_target_properties(ImmersedBoundary PROPERTIES SOVERSION ${SOVERSION})
 set_target_properties(ImmersedBoundary PROPERTIES MACOSX_RPATH TRUE)
-install(TARGETS ImmersedBoundary LIBRARY DESTINATION ${LIBDIR} ARCHIVE DESTINATION ${LIBDIR})
+#install(TARGETS ImmersedBoundary LIBRARY DESTINATION ${LIBDIR} ARCHIVE DESTINATION ${LIBDIR})
 add_dependencies(ImmersedBoundary EspressoConfig)
 
 if(CUDA)

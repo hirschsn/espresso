@@ -14,7 +14,7 @@ file(GLOB espresso_scripts ${CMAKE_SOURCE_DIR}/scripts/*tcl)
 file(COPY ${espresso_scripts} DESTINATION ${CMAKE_BINARY_DIR}/scripts)
 install(DIRECTORY ${CMAKE_BINARY_DIR}/scripts DESTINATION ${DATA})
 
-add_library(EspressoTcl SHARED ${Espresso_SRC})
+add_library(EspressoTcl ${Espresso_SRC})
 set_target_properties(EspressoTcl PROPERTIES SOVERSION ${SOVERSION})
 set_target_properties(EspressoTcl PROPERTIES MACOSX_RPATH TRUE)
 add_dependencies(EspressoTcl EspressoConfig)

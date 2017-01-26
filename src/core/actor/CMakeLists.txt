@@ -1,8 +1,8 @@
 file(GLOB Actor_SRC *.cpp)
 
-add_library(Actor SHARED ${Actor_SRC})
+add_library(Actor ${Actor_SRC})
 set_target_properties(Actor PROPERTIES SOVERSION ${SOVERSION})
-install(TARGETS Actor LIBRARY DESTINATION ${LIBDIR} ARCHIVE DESTINATION ${LIBDIR})
+#install(TARGETS Actor LIBRARY DESTINATION ${LIBDIR} ARCHIVE DESTINATION ${LIBDIR})
 add_dependencies(Actor EspressoConfig)
 
 set_target_properties(Actor PROPERTIES MACOSX_RPATH TRUE)
