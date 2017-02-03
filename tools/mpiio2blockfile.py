@@ -18,9 +18,6 @@
 #
 from __future__ import print_function
 
-# Important: Currently, this script assumes, that all fields are dumped.
-# To support less: Read the "fields" unsigned int from 1.head.
-
 import os
 import sys
 import array
