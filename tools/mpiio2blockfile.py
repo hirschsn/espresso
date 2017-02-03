@@ -132,7 +132,7 @@ for rank in range(nproc):
     start = pref[rank] + rank
     end = rank + (pref[rank + 1] if rank < nproc - 1 else ntotalpart)
     for pid, i in enumerate(range(start, end)):
-        print("\t{%i { " % id[pref[rank] + pid], end="")
+        print("\t{%i { " % idn[pref[rank] + pid], end="")
         # The start and end indices for the bond array are determined
         # via boff. However, boff does only *locally* store prefixes,
         # i.e. they have to be globalized by adding the total number of
