@@ -26,8 +26,8 @@ import sys
 import array
 
 if len(sys.argv) < 2:
-    print >>sys.stderr, "Prefix as second argument!"
-    raise SystemExit(1)
+    sys.stderr.write("Usage: {} PREFIX\n".format(sys.argv[0]))
+    sys.exit(1)
 
 fpref = sys.argv[1]
 headf = fpref + ".head"
@@ -39,10 +39,16 @@ velf = fpref + ".vel"
 bofff = fpref + ".boff"
 bondf = fpref + ".bond"
 
+read_typ = os.access(typef, os.R_OK)
+read_pos = os.access(posf, os.R_OK)
+read_vel = os.access(velf, os.R_OK)
+read_bonds = os.access(bofff, os.R_OK)
+
 # Determine nproc, etc. at time of writing
 nproc = os.stat(preff).st_size / 4
 ntotalpart = os.stat(idf).st_size / 4
-ntotalbond = os.stat(bondf).st_size / 4
+if read_bonds:
+    ntotalbond = os.stat(bondf).st_size / 4
 
 # Read header - fields, n_bonded_ia, bonded_ia_params[:].nums
 fields = 0
@@ -63,42 +69,62 @@ with open(preff) as f:
     pref.read(f, nproc)
 
 # Read ids
-id = array.array("i")
+idn = array.array("i")
 with open(idf) as f:
-    id.read(f, ntotalpart)
+    idn.read(f, ntotalpart)
 
 # Read types
-type = array.array("i")
-with open(typef) as f:
-    type.read(f, ntotalpart)
+if read_typ:
+    typ = array.array("i")
+    with open(typef) as f:
+        typ.read(f, ntotalpart)
 
 # Read pos
-pos = array.array("d")
-with open(posf) as f:
-    pos.read(f, 3 * ntotalpart)
+if read_pos:
+    pos = array.array("d")
+    with open(posf) as f:
+        pos.read(f, 3 * ntotalpart)
 
 # Read vel
-vel = array.array("d")
-with open(velf) as f:
-    vel.read(f, 3 * ntotalpart)
+if read_vel:
+    vel = array.array("d")
+    with open(velf) as f:
+        vel.read(f, 3 * ntotalpart)
 
 # Read bonds
-boff = array.array("i")
-with open(bofff) as f:
-    boff.read(f, ntotalpart + nproc)
+if read_bonds:
+    boff = array.array("i")
+    with open(bofff) as f:
+        boff.read(f, ntotalpart + nproc)
 
-bond = array.array("i")
-with open(bondf) as f:
-    bond.read(f, ntotalbond)
+    bond = array.array("i")
+    with open(bondf) as f:
+        bond.read(f, ntotalbond)
 
 
 # Print particles in blockfile format
-print("{particles {id type pos v}")
+spec = ["id"]
+if read_typ:
+    spec.append("type")
+if read_pos:
+    spec.append("pos")
+if read_vel:
+    spec.append("v")
+
+print("{particles {%s}" % " ".join(spec))
 for i in range(ntotalpart):
-    print("\t{%i %i %r %r %r %r %r %r}" \
-        % (id[i], type[i], pos[3*i], pos[3*i+1], pos[3*i+2], \
-           vel[3*i], vel[3*i+1], vel[3*i+2]))
+    print("\t{%i" % idn[i], end="")
+    if read_typ:
+        print(" %i" % typ[i], end="")
+    if read_pos:
+        print(" %r %r %r" % (pos[3*i], pos[3*i+1], pos[3*i+2]), end="")
+    if read_vel:
+        print(" %r %r %r" % (vel[3*i], vel[3*i+1], vel[3*i+2]), end="")
+    print("}")
 print("}")
+
+if not read_bonds:
+    sys.exit(0)
 
 # Print bonds in blockfile format
 print("{bonds")
