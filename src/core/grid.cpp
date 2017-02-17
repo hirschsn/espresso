@@ -387,3 +387,49 @@ void rescale_boxl(int dir, double d_new) {
     mpi_rescale_particles(dir, scale);
   }
 }
+
+int grid_get_neighbor_rank(const int disp[3])
+{
+  int neigh, coords[3];
+
+  for (int i = 0; i < 3; ++i) {
+    coords[i] = node_pos[i] + disp[i];
+    if (coords[i] >= node_grid[i])
+        coords[i] = 0;
+    else if (coords[i] < 0)
+        coords[i] = node_grid[i] - 1;
+  }
+  MPI_Cart_rank(comm_cart, coords, &neigh);
+  return neigh;
+}
+
+int neighbor_index(int disp[3])
+{
+  int neighshape[3] = {3, 3, 3};
+  int i = get_linear_index(disp[0] + 1, disp[1] + 1, disp[2] + 1, neighshape);
+  /* 13 is the process itself, so starting from 13 subtract one. */
+  return i < 13? i: i - 1;
+}
+
+void displacement_of_neighbor(int neighidx, int disp[3])
+{
+  int neighshape[3] = {3, 3, 3};
+  if (neighidx >= 13)
+    neighidx++;
+  get_grid_pos(neighidx, &disp[0], &disp[1], &disp[2], neighshape);
+  disp[0]--;
+  disp[1]--;
+  disp[2]--;
+}
+
+void get_async_neighbor_ranks(int neigh[26])
+{
+  int disp[3];
+
+  for (disp[0] = -1; disp[0] <= 1; ++disp[0])
+    for (disp[1] = -1; disp[1] <= 1; ++disp[1])
+      for (disp[2] = -1; disp[2] <= 1; ++disp[2])
+        if (disp[0] != 0 || disp[1] != 0 || disp[2] != 0)
+          neigh[neighbor_index(disp)] = grid_get_neighbor_rank(disp);
+}
+
