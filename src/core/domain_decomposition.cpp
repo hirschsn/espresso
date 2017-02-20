@@ -1046,7 +1046,10 @@ static void dd_async_exchange_insert_dyndata(ParticleList *recvbuf, std::vector<
   int read = 0;
 
   for (int pc = 0; pc < recvbuf->n; pc++) {
-    Particle *p = &recvbuf->part[pc];
+    // Use local_particles to find the correct particle address since the
+    // particles from recvbuf have already been copied by dd_append_particles
+    // in dd_async_exchange_insert_particles.
+    Particle *p = local_particles[recvbuf->part[pc].p.identity];
     if (p->bl.n > 0) {
       alloc_intlist(&p->bl, p->bl.n);
       memmove(p->bl.e, &dynrecv[read], p->bl.n * sizeof(int));
@@ -1127,8 +1130,10 @@ void  dd_async_exchange_and_sort_particles()
       // Particles received
       recvbuf[recvidx].n = nrecvpart[recvidx];
       int dyndatasiz = dd_async_exchange_insert_particles(&recvbuf[recvidx]);
-      if (dyndatasiz > 0)
-        MPI_Irecv(recvbuf_dyn[recvidx].data(), dyndatasiz, MPI_BYTE, source, tag, comm_cart, &rreq[recvidx]);
+      if (dyndatasiz > 0) {
+        recvbuf_dyn[recvidx].resize(dyndatasiz);
+        MPI_Irecv(recvbuf_dyn[recvidx].data(), dyndatasiz, MPI_INT, source, tag, comm_cart, &rreq[recvidx]);
+      }
     } else {
       dd_async_exchange_insert_dyndata(&recvbuf[recvidx], recvbuf_dyn[recvidx]);
     }
