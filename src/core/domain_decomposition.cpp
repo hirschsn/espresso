@@ -958,7 +958,7 @@ static void dd_async_exchange_fill_sendbufs(ParticleList sendbuf[26], std::vecto
         disp[d] = bin_between(part->r.p[d], my_left[d], my_right[d], errmargin[d]);
 
       if (disp[0] != 0 || disp[1] != 0 || disp[2] != 0) {
-        int li = neighbor_index(disp);
+        int li = async_grid_get_neighbor_index(disp);
         // Dynamic data (bonds and exclusions)
         sendbuf_dyn[li].insert(sendbuf_dyn[li].end(), part->bl.e, part->bl.e + part->bl.n);
 #ifdef EXCLUSIONS
@@ -1082,14 +1082,14 @@ void  dd_async_exchange_and_sort_particles()
   std::vector<MPI_Request> rreq(nneigh, MPI_REQUEST_NULL);
   std::vector<int> nrecvpart(nneigh, 0);
 
-  get_async_neighbor_ranks(neighrank);
+  async_grid_get_neighbor_ranks(neighrank);
 
   for (int i = 0; i < nneigh; ++i) {
     init_particlelist(&sendbuf[i]);
     init_particlelist(&recvbuf[i]);
 
     int disp[3], tag;
-    displacement_of_neighbor(i, disp);
+    async_grid_get_displacement_of_neighbor_index(i, disp);
     tag = get_tag(1, disp);
     MPI_Irecv(&nrecvpart[i], 1, MPI_INT, neighrank[i], tag, comm_cart, &rreq[i]);
   }
@@ -1099,7 +1099,7 @@ void  dd_async_exchange_and_sort_particles()
   // Send particle lists
   for (int i = 0; i < nneigh; ++i) {
     int disp[3], tag;
-    displacement_of_neighbor(i, disp);
+    async_grid_get_displacement_of_neighbor_index(i, disp);
     tag = get_tag(0, disp);
     // If we didn't send the length here, we would need a MPI_Iprobe loop for reception
     MPI_Isend(&sendbuf[i].n, 1, MPI_INT, neighrank[i], tag, comm_cart, &sreq[i]);
@@ -1111,6 +1111,10 @@ void  dd_async_exchange_and_sort_particles()
   dd_resort_particles();
 
   // Receive all data
+  // Successive IRecvs for the same (source, tag) pair replace the receive
+  // request in rreq. MPI ensures ordered communication for the same (source,
+  // tag) pairs. The vector "recvs" captures the reception state of a (source,
+  // tag) pair by its index in the receive buffer.
   MPI_Status status;
   std::vector<int> recvs(nneigh, 0);
   int recvidx, tag, source;

@@ -179,24 +179,24 @@ int map_3don2d_grid(int g3d[3],int g2d[3], int mult[3]);
 void rescale_boxl(int dir, double d_new);
 
 
-int grid_get_neighbor_rank(const int disp[3]);
+int async_grid_get_neighbor_rank(const int disp[3]);
 
 /** Returns a neighbor index in [0, 26] for a given displacement vector.
  * Do not call this function with displacement {0, 0, 0}.
  */
-int neighbor_index(int disp[3]);
+int async_grid_get_neighbor_index(int disp[3]);
 
 /** Fill neigh with the 26 neighboring indices
  */
-void get_async_neighbor_ranks(int neigh[26]);
+void async_grid_get_neighbor_ranks(int neigh[26]);
 
 /** Get the displacement vector of a neighbor index in [0, 26].
  */
-void displacement_of_neighbor(int neighidx, int disp[3]);
+void async_grid_get_displacement_of_neighbor_index(int neighidx, int disp[3]);
 
 /** Fill neigh with the 26 neighboring ranks for asynchronous communication
  */
-void get_async_neighbor_ranks(int neigh[26]);
+void async_grid_get_neighbor_ranks(int neigh[26]);
 
 /** get the minimal distance vector of two vectors in the current bc.
   *  \ref LEES_EDWARDS note: there is no need to add the le_offset here, 
