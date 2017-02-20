@@ -388,8 +388,7 @@ void rescale_boxl(int dir, double d_new) {
   }
 }
 
-
-int grid_get_neighbor_rank(const int disp[3])
+int async_grid_get_neighbor_rank(const int disp[3])
 {
   int neigh, coords[3];
 
@@ -404,7 +403,37 @@ int grid_get_neighbor_rank(const int disp[3])
   return neigh;
 }
 
-bool grid_node_on_boundary(const int disp[3], int d)
+int async_grid_get_neighbor_index(int disp[3])
+{
+  int neighshape[3] = {3, 3, 3};
+  int i = get_linear_index(disp[0] + 1, disp[1] + 1, disp[2] + 1, neighshape);
+  /* 13 is the process itself, so starting from 13 subtract one. */
+  return i < 13? i: i - 1;
+}
+
+void async_grid_get_displacement_of_neighbor_index(int neighidx, int disp[3])
+{
+  int neighshape[3] = {3, 3, 3};
+  if (neighidx >= 13)
+    neighidx++;
+  get_grid_pos(neighidx, &disp[0], &disp[1], &disp[2], neighshape);
+  disp[0]--;
+  disp[1]--;
+  disp[2]--;
+}
+
+void async_grid_get_neighbor_ranks(int neigh[26])
+{
+  int disp[3];
+
+  for (disp[0] = -1; disp[0] <= 1; ++disp[0])
+    for (disp[1] = -1; disp[1] <= 1; ++disp[1])
+      for (disp[2] = -1; disp[2] <= 1; ++disp[2])
+        if (disp[0] != 0 || disp[1] != 0 || disp[2] != 0)
+          neigh[async_grid_get_neighbor_index(disp)] = async_grid_get_neighbor_rank(disp);
+}
+
+bool async_grid_is_node_on_boundary(const int disp[3], int d)
 {
   if (disp[d] > 0 && node_pos[d] == node_grid[d] - 1)
     return true;

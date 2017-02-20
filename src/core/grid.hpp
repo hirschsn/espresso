@@ -178,6 +178,42 @@ int map_3don2d_grid(int g3d[3],int g2d[3], int mult[3]);
 /** rescales the box in dimension 'dir' to the new value 'd_new', and rescales the particles accordingly */
 void rescale_boxl(int dir, double d_new);
 
+
+/** Determine the rank of a process in direction given by disp.
+ * Cannot use MPI_Cart_shift here because we need more than just the
+ * face neighbors.
+ *
+ * \param dist dispalcement vector in {-1, 0, 1}^3
+ * \return rank within comm_cart
+ */
+int async_grid_get_neighbor_rank(const int disp[3]);
+
+/** Returns a neighbor index in [0, 26] for a given displacement vector.
+ * Do not call this function with displacement {0, 0, 0}.
+ */
+int async_grid_get_neighbor_index(int disp[3]);
+
+/** Fill neigh with the 26 neighboring indices
+ */
+void async_grid_get_neighbor_ranks(int neigh[26]);
+
+/** Get the displacement vector of a neighbor index in [0, 26].
+ */
+void async_grid_get_displacement_of_neighbor_index(int neighidx, int disp[3]);
+
+/** Fill neigh with the 26 neighboring ranks for asynchronous communication
+ */
+void async_grid_get_neighbor_ranks(int neigh[26]);
+
+/** Returns true if this node is on the boundary in direction d and this
+ * direction is relevant according to disp.
+ *
+ * \param dist dispalcement vector in {-1, 0, 1}^3
+ * \param d direction to check
+ * \return true if process on boundary w.r.t. direction d and disp
+ */
+bool async_grid_is_node_on_boundary(const int disp[3], int d);
+
 /** get the minimal distance vector of two vectors in the current bc.
   *  \ref LEES_EDWARDS note: there is no need to add the le_offset here, 
   *  any offset should already have been added when the image particle was prepared.
@@ -331,24 +367,6 @@ inline void unfold_position(double pos[3], int image_box[3])
   unfold_position(pos, v, image_box);
 }
 
-
-/** Determine the rank of a process in direction given by disp.
- * Cannot use MPI_Cart_shift here because we need more than just the
- * face neighbors.
- *
- * \param dist dispalcement vector in {-1, 0, 1}^3
- * \return rank within comm_cart
- */
-int grid_get_neighbor_rank(const int disp[3]);
-
-/** Returns true if this node is on the boundary in direction d and this
- * direction is relevant according to disp.
- *
- * \param dist dispalcement vector in {-1, 0, 1}^3
- * \param d direction to check
- * \return true if process on boundary w.r.t. direction d and disp
- */
-bool grid_node_on_boundary(const int disp[3], int d);
 
 /*@}*/
 #endif

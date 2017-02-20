@@ -326,7 +326,7 @@ static int dd_lc_hc_count_ncells(const int lc[3], const int hc[3])
  * \param disp displacement vector from {-1, 0, 1}^3
  * \return unique number for a displacement vector
  */
-static int get_tag(int recv, const int disp[3])
+static int async_comm_get_tag(int recv, const int disp[3])
 {
   int tag = 0;
   for (int i = 0; i < 3; ++i)
@@ -376,7 +376,7 @@ void  dd_prepare_comm(GhostCommunicator *comm, int data_parts)
 
   // Prepare communications
   for (int i = 0; i < nneigh; ++i) {
-    int node = grid_get_neighbor_rank(disps[i]);
+    int node = async_grid_get_neighbor_rank(disps[i]);
 
     // Send receive loop
     for (int sr = 0; sr <= 1; ++sr) {
@@ -388,7 +388,7 @@ void  dd_prepare_comm(GhostCommunicator *comm, int data_parts)
       comm->comm[2*i+sr].node = node;
       comm->comm[2*i+sr].n_part_lists = ncells;
       comm->comm[2*i+sr].part_lists = (ParticleList **) Utils::malloc(ncells * sizeof(ParticleList *));
-      comm->comm[2*i+sr].tag = get_tag(sr, disps[i]);
+      comm->comm[2*i+sr].tag = async_comm_get_tag(sr, disps[i]);
 
       int nc = dd_fill_comm_cell_lists(comm->comm[2*i+sr].part_lists, lc, hc);
       // Sanity check
@@ -401,7 +401,7 @@ void  dd_prepare_comm(GhostCommunicator *comm, int data_parts)
       // Set the periodic shift (only relevant for sender and only if requested)
       // in the relevant directions
       for (int d = 0; d < 3; ++d)
-        if (sr == 0 && (data_parts & GHOSTTRANS_POSSHFTD) && grid_node_on_boundary(disps[i], d))
+        if (sr == 0 && (data_parts & GHOSTTRANS_POSSHFTD) && async_grid_is_node_on_boundary(disps[i], d))
           comm->comm[2*i+sr].shift[d] = -disps[i][d] * box_l[d];
     }
   }
@@ -879,206 +879,236 @@ void dd_topology_release()
 #endif
 }
 
-/************************************************************/
-void  dd_exchange_and_sort_particles(int global_flag)
+/** Returns -1 if p if in [-inf, a), 0 if p in [a, b) and 1 else.
+ * Comparisons are done w.r.t errmargin. If you want exact comparisons,
+ * pass errmargin = 0.
+ */
+static int bin_between(double p, double a, double b, double errmargin = 0.0)
 {
-  int dir, c, p, i, finished=0;
-  ParticleList *cell,*sort_cell, send_buf_l, send_buf_r, recv_buf_l, recv_buf_r;
-  Particle *part;
-  CELL_TRACE(fprintf(stderr,"%d: dd_exchange_and_sort_particles(%d):\n",this_node,global_flag));
-  CELL_TRACE(fprintf(stderr,"%d: node_neighbors are %d %d %d %d %d %d\n",this_node,
-             node_neighbors[0], node_neighbors[1], node_neighbors[2],
-             node_neighbors[3], node_neighbors[4], node_neighbors[5]));
+  if (p - a < -errmargin)
+    return -1;
+  else if (p - b >= errmargin)
+    return 1;
+  else
+    return 0;
+}
 
-  init_particlelist(&send_buf_l);
-  init_particlelist(&send_buf_r);
-  init_particlelist(&recv_buf_l);
-  init_particlelist(&recv_buf_r);
-  while(finished == 0 ) {
-    finished=1;
-    /* direction loop: x, y, z */  
-    for(dir=0; dir<3; dir++) { 
-      if(node_grid[dir] > 1) {
-	/* Communicate particles that have left the node domain */
-	/* particle loop */
-	for(c=0; c<local_cells.n; c++) {
-	  cell = local_cells.cell[c];
-	  for (p = 0; p < cell->n; p++) {
-	    part = &cell->part[p];
-	    /* Move particles to the left side */
-	    // Without the factor 0.5 in front of ROUND_ERROR_PREC, particles sitting exactly on the boundary 
-	    // may be accepted (i.e. not sent) here and rejected later on by dd_save_position_to_cell
-	    if(part->r.p[dir] - my_left[dir] < -0.5*ROUND_ERROR_PREC*box_l[dir]) {
-	      if( PERIODIC(dir) || (boundary[2*dir]==0) ) 
-		{
-		  CELL_TRACE(fprintf(stderr,"%d: dd_ex_and_sort_p: send part left %d\n",this_node,part->p.identity));
-		  local_particles[part->p.identity] = NULL;
-		  move_indexed_particle(&send_buf_l, cell, p);
-		  if(p < cell->n) p--;
-		}
-	    }
-	    /* Move particles to the right side */
-	    // Factor 0.5 see above
-	    else if(part->r.p[dir] - my_right[dir] >= 0.5*ROUND_ERROR_PREC*box_l[dir]) {
-	      if( PERIODIC(dir) || (boundary[2*dir+1]==0) ) 
-		{
-		  CELL_TRACE(fprintf(stderr,"%d: dd_ex_and_sort_p: send part right %d\n",this_node,part->p.identity));
-		  local_particles[part->p.identity] = NULL;
-		  move_indexed_particle(&send_buf_r, cell, p);
-		  if(p < cell->n) p--;
-		}
-	    }
-	    /* Sort particles in cells of this node during last direction */
-	    else if(dir==2) {
-	      sort_cell = dd_save_position_to_cell(part->r.p);
-	      if(sort_cell != cell) {
-		if(sort_cell==NULL) {
-		  CELL_TRACE(fprintf(stderr,"%d: dd_exchange_and_sort_particles: Take another loop",this_node));
-		  CELL_TRACE(fprintf(stderr, "%d: dd_exchange_and_sort_particles: CP1 Particle %d (%f,%f,%f) not inside node domain.\n",
-				     this_node,part->p.identity,part->r.p[0],part->r.p[1],part->r.p[2]));		 
-		  finished=0;
-		  sort_cell = local_cells.cell[0];
-		  if(sort_cell != cell) {
-		    move_indexed_particle(sort_cell, cell, p);
-		    if(p < cell->n) p--;
-		  }
-		}
-		else {
-		  move_indexed_particle(sort_cell, cell, p);
-		  if(p < cell->n) p--;
-		}
-	      }
-	    }
-	  }
-	}
 
-        /* Exchange particles */
-#ifndef LEES_EDWARDS
- 	CELL_TRACE(fprintf(stderr,"%d: send receive %d\n",this_node, dir));
-        
-        if(node_pos[dir]%2==0) {
-          send_particles(&send_buf_l, node_neighbors[2*dir]);
-          recv_particles(&recv_buf_r, node_neighbors[2*dir+1]);
-          send_particles(&send_buf_r, node_neighbors[2*dir+1]);
-          recv_particles(&recv_buf_l, node_neighbors[2*dir]);
-        }
-        else {
-          recv_particles(&recv_buf_r, node_neighbors[2*dir+1]);
-          send_particles(&send_buf_l, node_neighbors[2*dir]);
-          recv_particles(&recv_buf_l, node_neighbors[2*dir]);
-          send_particles(&send_buf_r, node_neighbors[2*dir+1]);
-        }
-#else
-    int ii, nn, lr;
-    for( ii = 0; ii <2; ii++){
+/** Fill the send buffers with particles that left the subdomain.
+ * \param sendbuf send buffers (one for each neighbor) for particle data
+ * \param sendbuf_dyn send buffers (one for each neighbor) for dynamic particle data
+ * Be sure that all buffers are empty before calling this function.
+ */
+static void dd_async_exchange_fill_sendbufs(ParticleList sendbuf[26], std::vector<int> sendbuf_dyn[26])
+{
+  const double errmargin[3] = {
+    0.5 * ROUND_ERROR_PREC * box_l[0],
+    0.5 * ROUND_ERROR_PREC * box_l[1],
+    0.5 * ROUND_ERROR_PREC * box_l[2],
+  };
+  int disp[3];
 
-            nn = node_neighbors[2*dir+ii];
-            lr = node_neighbor_lr[2*dir+ii];
-            
-            if( lr == 1 ){
-                if( nn > this_node ){
-                        send_particles(&send_buf_r, nn);
-                        recv_particles(&recv_buf_r, nn);
-                }else{
-                        recv_particles(&recv_buf_r, nn);
-                        send_particles(&send_buf_r, nn);
-                }
-            }else{
-                if( nn > this_node ){
-                        send_particles(&send_buf_l, nn);
-                        recv_particles(&recv_buf_l, nn);
-                }else{
-                        recv_particles(&recv_buf_l, nn);
-                        send_particles(&send_buf_l, nn);
-                }
-            }
-    }
+  for(int c = 0; c < local_cells.n; c++) {
+    ParticleList *cell = local_cells.cell[c];
+    for (int p = 0; p < cell->n; p++) {
+      Particle *part = &cell->part[p];
+
+      for (int d = 0; d < 3; ++d)
+        disp[d] = bin_between(part->r.p[d], my_left[d], my_right[d], errmargin[d]);
+
+      if (disp[0] != 0 || disp[1] != 0 || disp[2] != 0) {
+        int li = async_grid_get_neighbor_index(disp);
+        // Dynamic data (bonds and exclusions)
+        sendbuf_dyn[li].insert(sendbuf_dyn[li].end(), part->bl.e, part->bl.e + part->bl.n);
+#ifdef EXCLUSIONS
+        sendbuf_dyn[li].insert(sendbuf_dyn[li].end(), part->el.e, part->el.e + part->el.n);
 #endif
-
-        /* sort received particles to cells, folding of coordinates also happens in here. */
-        if(dd_append_particles(&recv_buf_l, 2*dir  ) && dir == 2) finished = 0;
-        if(dd_append_particles(&recv_buf_r, 2*dir+1) && dir == 2) finished = 0;
-        /* reset send/recv buffers */
-        send_buf_l.n = 0;
-        send_buf_r.n = 0;
-        recv_buf_l.n = 0;
-        recv_buf_r.n = 0;
-      }
-      else {
-	/* Single node direction case (no communication) */
-	/* Fold particles that have left the box */
-	/* particle loop */
-	for(c=0; c<local_cells.n; c++) {
-	  cell = local_cells.cell[c];
-	  for (p = 0; p < cell->n; p++) {
-	    part = &cell->part[p];
-	    if( PERIODIC(dir) ) {
-              fold_coordinate(part->r.p, part->m.v, part->l.i, dir);
-            }
-	    if (dir==2) {
-	      sort_cell = dd_save_position_to_cell(part->r.p);
-	      if(sort_cell != cell) {
-		if(sort_cell==NULL) {
-		  CELL_TRACE(fprintf(stderr, "%d: dd_exchange_and_sort_particles: CP2 Particle %d (%f,%f,%f) not inside node domain.\n",
-				     this_node,part->p.identity,part->r.p[0],part->r.p[1],part->r.p[2]));
-		  finished=0;
-		  sort_cell = local_cells.cell[0];
-		  if(sort_cell != cell) {
-		    move_indexed_particle(sort_cell, cell, p);
-		    if(p < cell->n) p--;
-		  }      
-		}
-		else {
-		  CELL_TRACE(fprintf(stderr, "%d: dd_exchange_and_sort_particles: move particle id %d\n", this_node,part->p.identity));
-		  move_indexed_particle(sort_cell, cell, p);
-		  if(p < cell->n) p--;
-		}
-	      }
-	    }
-	  }
-	}
+        // Particle data
+        int pid = part->p.identity;
+        move_indexed_particle(&sendbuf[li], cell, p);
+        local_particles[pid] = NULL;
+        if (p < cell->n) p--;
       }
     }
+  }
+}
 
-    /* Communicate wether particle exchange is finished */
-    if(global_flag == CELL_GLOBAL_EXCHANGE) {
-      if(this_node==0) {
-	int sum;
-	MPI_Reduce(&finished, &sum, 1, MPI_INT, MPI_SUM, 0, comm_cart);
-	if( sum < n_nodes ) finished=0; else finished=sum; 
-      } else {
-	MPI_Reduce(&finished, NULL, 1, MPI_INT, MPI_SUM, 0, comm_cart);
-      }
-      MPI_Bcast(&finished, 1, MPI_INT, 0, comm_cart);
-    } else {
-      if(finished == 0) {
-      runtimeErrorMsg() << "some particles moved more than min_local_box_l, reduce the time step";
-	/* the bad guys are all in cell 0, but probably their interactions are of no importance anyways.
-	   However, their positions have to be made valid again. */
-	finished = 1;
-	/* all out of range coordinates in the left overs cell are moved to (0,0,0) */
-	cell = local_cells.cell[0];
-	for (p = 0; p < cell->n; p++) {
-	  part = &cell->part[p];
-	  if(dir < 3 && (part->r.p[dir] < my_left[dir] || part->r.p[dir] > my_right[dir]))
-	    for (i = 0; i < 3; i++)
-	      part->r.p[i] = 0;
-	}
+/** Resorts particles within the subdomain.
+ * ONLY call this if all particles in local_cells belong to this subdomain.
+ * I.e. after dd_async_exchange_fill_sendbufs.
+ */
+static void dd_resort_particles()
+{
+  for(int c = 0; c < local_cells.n; c++) {
+    ParticleList *cell = local_cells.cell[c];
+    for (int p = 0; p < cell->n; p++) {
+      Particle *part = &cell->part[p];
+      ParticleList *sort_cell = dd_save_position_to_cell(part->r.p);
+      if (sort_cell == NULL) {
+        fprintf(stderr, "[%i] dd_exchange_and_sort_particles: Particle %i (%lf, %lf, %lf) not inside subdomain\n", this_node, part->p.identity, part->r.p[0], part->r.p[1], part->r.p[2]);
+        errexit();
+      } else if (sort_cell != cell) {
+        move_indexed_particle(sort_cell, cell, p);
+        if(p < cell->n) p--;
       }
     }
-    CELL_TRACE(fprintf(stderr,"%d: dd_exchange_and_sort_particles: finished value: %d\n",this_node,finished));
+  }
+}
+
+
+/** Inserts particles from a ParticleList and returns the size of the
+ * dynamically allocated data of the particles.
+ */
+static int dd_async_exchange_insert_particles(ParticleList *recvbuf)
+{
+  int dynsiz = 0;
+
+  update_local_particles(recvbuf);
+
+  for (int p = 0; p < recvbuf->n; ++p) {
+    fold_position(recvbuf->part[p].r.p, recvbuf->part[p].l.i);
+
+    dynsiz += recvbuf->part[p].bl.n;
+#ifdef EXCLUSIONS
+    dynsiz += recvbuf->part[p].el.n;
+#endif
+  }
+  // Fold direction of dd_append_particles unused.
+  if (dd_append_particles(recvbuf, 0)) {
+    fprintf(stderr, "dd_exchange_and_sort_particles: OOB particles received.\n");
+    errexit();
   }
 
-  realloc_particlelist(&send_buf_l, 0);
-  realloc_particlelist(&send_buf_r, 0);
-  realloc_particlelist(&recv_buf_l, 0);
-  realloc_particlelist(&recv_buf_r, 0);
+  return dynsiz;
+}
+
+
+/** Inserts the dynamic particle data from dynrecv to the particles from recvbuf.
+ */
+static void dd_async_exchange_insert_dyndata(ParticleList *recvbuf, std::vector<int> &dynrecv)
+{
+  int read = 0;
+
+  for (int pc = 0; pc < recvbuf->n; pc++) {
+    // Use local_particles to find the correct particle address since the
+    // particles from recvbuf have already been copied by dd_append_particles
+    // in dd_async_exchange_insert_particles.
+    Particle *p = local_particles[recvbuf->part[pc].p.identity];
+    if (p->bl.n > 0) {
+      alloc_intlist(&p->bl, p->bl.n);
+      memmove(p->bl.e, &dynrecv[read], p->bl.n * sizeof(int));
+      read += p->bl.n;
+    } else {
+      p->bl.e = NULL;
+    }
+#ifdef EXCLUSIONS
+    if (p->el.n > 0) {
+      alloc_intlist(&p->el, p->el.n);
+      memmove(p->el.e, &dynrecv[read], p->el.n*sizeof(int));
+      read += p->el.n;
+    }
+    else {
+      p->el.e = NULL;
+    }
+#endif
+  }
+}
+
+
+/************************************************************/
+void  dd_async_exchange_and_sort_particles()
+{
+  const int nneigh = 26;
+  int neighrank[nneigh];
+  ParticleList sendbuf[nneigh], recvbuf[nneigh];
+  std::vector<int> sendbuf_dyn[nneigh], recvbuf_dyn[nneigh];
+  std::vector<MPI_Request> sreq(3 * nneigh, MPI_REQUEST_NULL);
+  std::vector<MPI_Request> rreq(nneigh, MPI_REQUEST_NULL);
+  std::vector<int> nrecvpart(nneigh, 0);
+
+  async_grid_get_neighbor_ranks(neighrank);
+
+  for (int i = 0; i < nneigh; ++i) {
+    init_particlelist(&sendbuf[i]);
+    init_particlelist(&recvbuf[i]);
+
+    int disp[3], tag;
+    async_grid_get_displacement_of_neighbor_index(i, disp);
+    tag = async_comm_get_tag(1, disp);
+    MPI_Irecv(&nrecvpart[i], 1, MPI_INT, neighrank[i], tag, comm_cart, &rreq[i]);
+  }
+
+  dd_async_exchange_fill_sendbufs(sendbuf, sendbuf_dyn);
+
+  // Send particle lists
+  for (int i = 0; i < nneigh; ++i) {
+    int disp[3], tag;
+    async_grid_get_displacement_of_neighbor_index(i, disp);
+    tag = async_comm_get_tag(0, disp);
+    // If we didn't send the length here, we would need a MPI_Iprobe loop for reception
+    MPI_Isend(&sendbuf[i].n, 1, MPI_INT, neighrank[i], tag, comm_cart, &sreq[i]);
+    MPI_Isend(sendbuf[i].part, sendbuf[i].n * sizeof(Particle), MPI_BYTE, neighrank[i], tag, comm_cart, &sreq[2 * i]);
+    if (sendbuf_dyn[i].size() > 0)
+      MPI_Isend(sendbuf_dyn[i].data(), sendbuf_dyn[i].size(), MPI_INT, neighrank[i], tag, comm_cart, &sreq[3 * i]);
+  }
+
+  dd_resort_particles();
+
+  // Receive all data
+  // Successive IRecvs for the same (source, tag) pair replace the receive
+  // request in rreq. MPI ensures ordered communication for the same (source,
+  // tag) pairs. The vector "recvs" captures the reception state of a (source,
+  // tag) pair by its index in the receive buffer.
+  MPI_Status status;
+  std::vector<int> recvs(nneigh, 0);
+  int recvidx, tag, source;
+  while (true) {
+    MPI_Waitany(nneigh, rreq.data(), &recvidx, &status);
+    if (recvidx == MPI_UNDEFINED)
+      break;
+
+    source = status.MPI_SOURCE; // == neighrank[recvidx]
+    tag = status.MPI_TAG;
+
+    if (recvs[recvidx] == 0) {
+      // Size received
+      realloc_particlelist(&recvbuf[recvidx], nrecvpart[recvidx]);
+      MPI_Irecv(recvbuf[recvidx].part, nrecvpart[recvidx] * sizeof(Particle), MPI_BYTE, source, tag, comm_cart, &rreq[recvidx]);
+    } else if (recvs[recvidx] == 1) {
+      // Particles received
+      recvbuf[recvidx].n = nrecvpart[recvidx];
+      int dyndatasiz = dd_async_exchange_insert_particles(&recvbuf[recvidx]);
+      if (dyndatasiz > 0) {
+        recvbuf_dyn[recvidx].resize(dyndatasiz);
+        MPI_Irecv(recvbuf_dyn[recvidx].data(), dyndatasiz, MPI_INT, source, tag, comm_cart, &rreq[recvidx]);
+      }
+    } else {
+      dd_async_exchange_insert_dyndata(&recvbuf[recvidx], recvbuf_dyn[recvidx]);
+    }
+    recvs[recvidx]++;
+  }
+
+  MPI_Waitall(3 * nneigh, sreq.data(), MPI_STATUS_IGNORE);
+  for (int i = 0; i < nneigh; ++i) {
+    // Remove particles from this nodes local list and free data
+    for (int p = 0; p < sendbuf[i].n; p++) {
+      free_particle(&sendbuf[i].part[p]);
+    }
+    realloc_particlelist(&sendbuf[i], 0);
+    realloc_particlelist(&recvbuf[i], 0);
+  }
 
 #ifdef ADDITIONAL_CHECKS
   check_particle_consistency();
 #endif
 
   CELL_TRACE(fprintf(stderr,"%d: dd_exchange_and_sort_particles finished\n",this_node));
+}
+
+void  dd_exchange_and_sort_particles(int global_flag)
+{
+  (void) global_flag;
+  dd_async_exchange_and_sort_particles();
 }
 
 /*************************************************/
