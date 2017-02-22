@@ -1046,10 +1046,10 @@ void  dd_async_exchange_and_sort_particles()
     async_grid_get_displacement_of_neighbor_index(i, disp);
     tag = async_comm_get_tag(0, disp);
     // If we didn't send the length here, we would need a MPI_Iprobe loop for reception
-    MPI_Isend(&sendbuf[i].n, 1, MPI_INT, neighrank[i], tag, comm_cart, &sreq[i]);
-    MPI_Isend(sendbuf[i].part, sendbuf[i].n * sizeof(Particle), MPI_BYTE, neighrank[i], tag, comm_cart, &sreq[2 * i]);
+    MPI_Isend(&sendbuf[i].n, 1, MPI_INT, neighrank[i], tag, comm_cart, &sreq[3*i]);
+    MPI_Isend(sendbuf[i].part, sendbuf[i].n * sizeof(Particle), MPI_BYTE, neighrank[i], tag, comm_cart, &sreq[3*i+1]);
     if (sendbuf_dyn[i].size() > 0)
-      MPI_Isend(sendbuf_dyn[i].data(), sendbuf_dyn[i].size(), MPI_INT, neighrank[i], tag, comm_cart, &sreq[3 * i]);
+      MPI_Isend(sendbuf_dyn[i].data(), sendbuf_dyn[i].size(), MPI_INT, neighrank[i], tag, comm_cart, &sreq[3*i+2]);
   }
 
   dd_resort_particles();
