@@ -956,30 +956,26 @@ static void dd_resort_particles()
 }
 
 
-/** Inserts particles from a ParticleList and returns the size of the
+/** Inserts particles from a ParticleList and calculate the size of the
  * dynamically allocated data of the particles.
+ * Returns 1 if recvbuf contains oob particles.
  */
-static int dd_async_exchange_insert_particles(ParticleList *recvbuf)
+static int dd_async_exchange_insert_particles(ParticleList *recvbuf, int *dynsiz)
 {
-  int dynsiz = 0;
+  *dynsiz = 0;
 
   update_local_particles(recvbuf);
 
   for (int p = 0; p < recvbuf->n; ++p) {
     fold_position(recvbuf->part[p].r.p, recvbuf->part[p].l.i);
 
-    dynsiz += recvbuf->part[p].bl.n;
+    *dynsiz += recvbuf->part[p].bl.n;
 #ifdef EXCLUSIONS
-    dynsiz += recvbuf->part[p].el.n;
+    *dynsiz += recvbuf->part[p].el.n;
 #endif
   }
   // Fold direction of dd_append_particles unused.
-  if (dd_append_particles(recvbuf, 0)) {
-    fprintf(stderr, "dd_exchange_and_sort_particles: OOB particles received.\n");
-    errexit();
-  }
-
-  return dynsiz;
+  return dd_append_particles(recvbuf, 0);
 }
 
 
@@ -1016,10 +1012,12 @@ static void dd_async_exchange_insert_dyndata(ParticleList *recvbuf, std::vector<
 
 
 /************************************************************/
-void  dd_async_exchange_and_sort_particles()
+void  dd_async_exchange_and_sort_particles(int global_flag)
 {
   const int nneigh = 26;
-  int neighrank[nneigh];
+  int nexchanges = 0;
+  int oob_particles_exist = 1; // Boolean
+  int neighrank[nneigh], neighdisp[nneigh][3];
   ParticleList sendbuf[nneigh], recvbuf[nneigh];
   std::vector<int> sendbuf_dyn[nneigh], recvbuf_dyn[nneigh];
   std::vector<MPI_Request> sreq(3 * nneigh, MPI_REQUEST_NULL);
@@ -1028,74 +1026,87 @@ void  dd_async_exchange_and_sort_particles()
 
   async_grid_get_neighbor_ranks(neighrank);
 
-  for (int i = 0; i < nneigh; ++i) {
-    init_particlelist(&sendbuf[i]);
-    init_particlelist(&recvbuf[i]);
+  for (int i = 0; i < nneigh; ++i)
+    async_grid_get_displacement_of_neighbor_index(i, neighdisp[i]);
 
-    int disp[3], tag;
-    async_grid_get_displacement_of_neighbor_index(i, disp);
-    tag = async_comm_get_tag(1, disp);
-    MPI_Irecv(&nrecvpart[i], 1, MPI_INT, neighrank[i], tag, comm_cart, &rreq[i]);
-  }
+  while (oob_particles_exist) {
+    oob_particles_exist = 0;
 
-  dd_async_exchange_fill_sendbufs(sendbuf, sendbuf_dyn);
+    for (int i = 0; i < nneigh; ++i) {
+      init_particlelist(&sendbuf[i]);
+      init_particlelist(&recvbuf[i]);
+      MPI_Irecv(&nrecvpart[i], 1, MPI_INT, neighrank[i], async_comm_get_tag(1, neighdisp[i]), comm_cart, &rreq[i]);
+    }
 
-  // Send particle lists
-  for (int i = 0; i < nneigh; ++i) {
-    int disp[3], tag;
-    async_grid_get_displacement_of_neighbor_index(i, disp);
-    tag = async_comm_get_tag(0, disp);
-    // If we didn't send the length here, we would need a MPI_Iprobe loop for reception
-    MPI_Isend(&sendbuf[i].n, 1, MPI_INT, neighrank[i], tag, comm_cart, &sreq[3*i]);
-    MPI_Isend(sendbuf[i].part, sendbuf[i].n * sizeof(Particle), MPI_BYTE, neighrank[i], tag, comm_cart, &sreq[3*i+1]);
-    if (sendbuf_dyn[i].size() > 0)
-      MPI_Isend(sendbuf_dyn[i].data(), sendbuf_dyn[i].size(), MPI_INT, neighrank[i], tag, comm_cart, &sreq[3*i+2]);
-  }
+    dd_async_exchange_fill_sendbufs(sendbuf, sendbuf_dyn);
 
-  dd_resort_particles();
+    // Send particle lists
+    for (int i = 0; i < nneigh; ++i) {
+      int tag = async_comm_get_tag(0, neighdisp[i]);
+      // If we didn't send the length here, we would need a MPI_Iprobe loop for reception
+      MPI_Isend(&sendbuf[i].n, 1, MPI_INT, neighrank[i], tag, comm_cart, &sreq[3*i]);
+      MPI_Isend(sendbuf[i].part, sendbuf[i].n * sizeof(Particle), MPI_BYTE, neighrank[i], tag, comm_cart, &sreq[3*i+1]);
+      if (sendbuf_dyn[i].size() > 0)
+        MPI_Isend(sendbuf_dyn[i].data(), sendbuf_dyn[i].size(), MPI_INT, neighrank[i], tag, comm_cart, &sreq[3*i+2]);
+    }
 
-  // Receive all data
-  // Successive IRecvs for the same (source, tag) pair replace the receive
-  // request in rreq. MPI ensures ordered communication for the same (source,
-  // tag) pairs. The vector "recvs" captures the reception state of a (source,
-  // tag) pair by its index in the receive buffer.
-  MPI_Status status;
-  std::vector<int> recvs(nneigh, 0);
-  int recvidx, tag, source;
-  while (true) {
-    MPI_Waitany(nneigh, rreq.data(), &recvidx, &status);
-    if (recvidx == MPI_UNDEFINED)
-      break;
+    // Only resort local particles in the first iteration
+    if (nexchanges == 0)
+      dd_resort_particles();
 
-    source = status.MPI_SOURCE; // == neighrank[recvidx]
-    tag = status.MPI_TAG;
+    // Receive all data
+    // Successive IRecvs for the same (source, tag) pair replace the receive
+    // request in rreq. MPI ensures ordered communication for the same (source,
+    // tag) pairs. The vector "recvs" captures the reception state of a (source,
+    // tag) pair by its index in the receive buffer.
+    MPI_Status status;
+    std::vector<int> recvs(nneigh, 0);
+    int recvidx, tag, source;
+    while (true) {
+      MPI_Waitany(nneigh, rreq.data(), &recvidx, &status);
+      if (recvidx == MPI_UNDEFINED)
+        break;
 
-    if (recvs[recvidx] == 0) {
-      // Size received
-      realloc_particlelist(&recvbuf[recvidx], nrecvpart[recvidx]);
-      MPI_Irecv(recvbuf[recvidx].part, nrecvpart[recvidx] * sizeof(Particle), MPI_BYTE, source, tag, comm_cart, &rreq[recvidx]);
-    } else if (recvs[recvidx] == 1) {
-      // Particles received
-      recvbuf[recvidx].n = nrecvpart[recvidx];
-      int dyndatasiz = dd_async_exchange_insert_particles(&recvbuf[recvidx]);
-      if (dyndatasiz > 0) {
-        recvbuf_dyn[recvidx].resize(dyndatasiz);
-        MPI_Irecv(recvbuf_dyn[recvidx].data(), dyndatasiz, MPI_INT, source, tag, comm_cart, &rreq[recvidx]);
+      source = status.MPI_SOURCE; // == neighrank[recvidx]
+      tag = status.MPI_TAG;
+
+      if (recvs[recvidx] == 0) {
+        // Size received
+        realloc_particlelist(&recvbuf[recvidx], nrecvpart[recvidx]);
+        MPI_Irecv(recvbuf[recvidx].part, nrecvpart[recvidx] * sizeof(Particle), MPI_BYTE, source, tag, comm_cart, &rreq[recvidx]);
+      } else if (recvs[recvidx] == 1) {
+        // Particles received
+        recvbuf[recvidx].n = nrecvpart[recvidx];
+        int dyndatasiz;
+        oob_particles_exist |= dd_async_exchange_insert_particles(&recvbuf[recvidx], &dyndatasiz);
+        if (dyndatasiz > 0) {
+          recvbuf_dyn[recvidx].resize(dyndatasiz);
+          MPI_Irecv(recvbuf_dyn[recvidx].data(), dyndatasiz, MPI_INT, source, tag, comm_cart, &rreq[recvidx]);
+        }
+      } else {
+        dd_async_exchange_insert_dyndata(&recvbuf[recvidx], recvbuf_dyn[recvidx]);
       }
-    } else {
-      dd_async_exchange_insert_dyndata(&recvbuf[recvidx], recvbuf_dyn[recvidx]);
+      recvs[recvidx]++;
     }
-    recvs[recvidx]++;
-  }
 
-  MPI_Waitall(3 * nneigh, sreq.data(), MPI_STATUS_IGNORE);
-  for (int i = 0; i < nneigh; ++i) {
-    // Remove particles from this nodes local list and free data
-    for (int p = 0; p < sendbuf[i].n; p++) {
-      free_particle(&sendbuf[i].part[p]);
+    MPI_Waitall(3 * nneigh, sreq.data(), MPI_STATUS_IGNORE);
+
+    // Remove particles from this nodes local list
+    for (int i = 0; i < nneigh; ++i) {
+      for (int p = 0; p < sendbuf[i].n; p++) {
+        free_particle(&sendbuf[i].part[p]);
+      }
+      realloc_particlelist(&sendbuf[i], 0);
+      realloc_particlelist(&recvbuf[i], 0);
     }
-    realloc_particlelist(&sendbuf[i], 0);
-    realloc_particlelist(&recvbuf[i], 0);
+
+    if (!global_flag && oob_particles_exist) {
+      fprintf(stderr, "[Rank %i] OOB particle received but no global exchange.\n", this_node);
+      errexit();
+    }
+    MPI_Allreduce(MPI_IN_PLACE, &oob_particles_exist, 1, MPI_INT, MPI_MAX, comm_cart);
+
+    nexchanges++;
   }
 
 #ifdef ADDITIONAL_CHECKS
@@ -1107,8 +1118,7 @@ void  dd_async_exchange_and_sort_particles()
 
 void  dd_exchange_and_sort_particles(int global_flag)
 {
-  (void) global_flag;
-  dd_async_exchange_and_sort_particles();
+  dd_async_exchange_and_sort_particles(global_flag);
 }
 
 /*************************************************/
