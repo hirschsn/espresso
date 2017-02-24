@@ -1156,11 +1156,11 @@ void  dd_async_exchange_and_sort_particles(int global_flag)
       realloc_particlelist(&recvbuf[i], 0);
     }
 
-    MPI_Allreduce(MPI_IN_PLACE, &oob_particles_exist, 1, MPI_INT, MPI_MAX, comm_cart);
     if (!global_flag && oob_particles_exist) {
-      fprintf(stderr, "[Rank %i] OB particle received but no global exchange.\n", this_node);
+      fprintf(stderr, "[Rank %i] OOB particle received but no global exchange.\n", this_node);
       errexit();
     }
+    MPI_Allreduce(MPI_IN_PLACE, &oob_particles_exist, 1, MPI_INT, MPI_MAX, comm_cart);
 
     nexchanges++;
   }
