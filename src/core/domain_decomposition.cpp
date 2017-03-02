@@ -1035,6 +1035,7 @@ void  dd_async_exchange_and_sort_particles(int global_flag)
     for (int i = 0; i < nneigh; ++i) {
       init_particlelist(&sendbuf[i]);
       init_particlelist(&recvbuf[i]);
+      sendbuf_dyn[i].clear(); // Important if nexchanges > 1
       MPI_Irecv(&nrecvpart[i], 1, MPI_INT, neighrank[i], async_comm_get_tag(1, neighdisp[i]), comm_cart, &rreq[i]);
     }
 
