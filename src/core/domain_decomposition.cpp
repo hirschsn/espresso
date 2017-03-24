@@ -965,14 +965,23 @@ static void dd_async_exchange_fill_sendbufs(ParticleList sendbuf[26], std::vecto
         sendbuf_dyn[li].insert(sendbuf_dyn[li].end(), part->el.e, part->el.e + part->el.n);
 #endif
         // Particle data
-        int pid = part->p.identity;
         move_indexed_particle(&sendbuf[li], cell, p);
-        local_particles[pid] = NULL;
         if (p < cell->n) p--;
       }
     }
   }
 }
+
+/** Free particles from a sent buffer and remove them from local_particles.
+ */
+void dd_async_exchange_free_sendbuf(ParticleList *pl)
+{
+  for (int p = 0; p < pl->n; p++) {
+    local_particles[pl->part[p].p.identity] = NULL;
+    free_particle(&pl->part[p]);
+  }
+}
+
 
 /** Resorts particles within the subdomain.
  * ONLY call this if all particles in local_cells belong to this subdomain.
@@ -1144,10 +1153,8 @@ void  dd_async_exchange_and_sort_particles()
 
   MPI_Waitall(3 * nneigh, sreq.data(), MPI_STATUS_IGNORE);
   for (int i = 0; i < nneigh; ++i) {
-    // Remove particles from this nodes local list and free data
-    for (int p = 0; p < sendbuf[i].n; p++) {
-      free_particle(&sendbuf[i].part[p]);
-    }
+    // Remove particles from this nodes local_particles and free data
+    dd_async_exchange_free_sendbuf(&sendbuf[i]);
     realloc_particlelist(&sendbuf[i], 0);
     realloc_particlelist(&recvbuf[i], 0);
   }
