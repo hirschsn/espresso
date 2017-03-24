@@ -1019,8 +1019,6 @@ static int dd_async_exchange_insert_particles(ParticleList *recvbuf)
 {
   int dynsiz = 0;
 
-  update_local_particles(recvbuf);
-
   for (int p = 0; p < recvbuf->n; ++p) {
     fold_position(recvbuf->part[p].r.p, recvbuf->part[p].l.i);
 
