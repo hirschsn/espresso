@@ -181,6 +181,12 @@ int dd_p4est_cellsize_even () {
 }
 //--------------------------------------------------------------------------------------------------
 void dd_p4est_create_grid () {
+  // ********** TIMING **********
+  auto& timer_compl = Utils::Timing::Timer::get_timer("dd_p4est_create_grid");
+  auto& timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::01-boilerplate start");
+  timer_compl.start();
+  timer.start();
+
   //printf("%i : new MD grid\n", this_node);
   CALL_TRACE();
   
@@ -211,7 +217,12 @@ void dd_p4est_create_grid () {
   CELL_TRACE(printf("%i : bricksize %ix%ix%i level %i\n", this_node, brick_size[0], brick_size[1], brick_size[2], grid_level));
   CELL_TRACE(printf("%i : cellsize %lfx%lfx%lf\n", this_node, dd.cell_size[0], dd.cell_size[1], dd.cell_size[2]));
 #endif
-  
+
+  // ********** TIMING **********
+  timer.stop();
+  timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::02-p4est calls");
+  timer.start();
+
   // create p4est structs
   p4est_conn = p8est_connectivity_new_brick (brick_size[0], brick_size[1], brick_size[2], 
                                              PERIODIC(0), PERIODIC(1), PERIODIC(2));
@@ -226,10 +237,15 @@ void dd_p4est_create_grid () {
 
   p4est_ghost = p4est_ghost_new(p4est, P8EST_CONNECT_CORNER);
   p4est_mesh = p4est_mesh_new_ext(p4est, p4est_ghost, 1, 1, 0, P8EST_CONNECT_CORNER);
+
+  // ********** TIMING **********
+  timer.stop();
+  timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::03-space_idx");
+  timer.start();
   
   CELL_TRACE(printf("%i : %i %i-%i %i\n",
     this_node,periodic,p4est->first_local_tree,p4est->last_local_tree,p4est->local_num_quadrants));
-  
+
   // create space filling inforamtion about first quads per node from p4est
   p4est_space_idx = new int[n_nodes + 1];
   for (int i=0;i<=n_nodes;++i) {
@@ -260,6 +276,11 @@ void dd_p4est_create_grid () {
       CELL_TRACE(printf("%i : %i - %i\n", this_node, p4est_space_idx[i-1], p4est_space_idx[i] - 1));
     }
   }
+
+  // ********** TIMING **********
+  timer.stop();
+  timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::04-cell_neigh");
+  timer.start();
   
   // geather cell neighbors
   std::vector<uint64_t> quads;
@@ -310,6 +331,11 @@ void dd_p4est_create_grid () {
     }
     shell.push_back(ls);
   }
+
+  // ********** TIMING **********
+  timer.stop();
+  timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::05-ghosts");
+  timer.start();
     
   //char fname[100];
   //sprintf(fname,"cells_%i.list",this_node);
@@ -409,6 +435,10 @@ void dd_p4est_create_grid () {
   }
   
   //fclose(h);
+  // ********** TIMING **********
+  timer.stop();
+  timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::06-boilerplate_final");
+  timer.start();
   
   // Copy the generated data to globals
   num_cells = (size_t)quads.size();
@@ -433,11 +463,21 @@ void dd_p4est_create_grid () {
   CELL_TRACE(printf("%d: %.3f %.3fx%.3fx%.3f %.3fx%.3fx%.3f\n",
     this_node, max_range, box_l[0],box_l[1],box_l[2], dd.cell_size[0],dd.cell_size[1],dd.cell_size[2]));
 
+
+  // ********** TIMING **********
+  timer.stop();
+  timer_compl.stop();
 }
 //--------------------------------------------------------------------------------------------------
 
 // Compute communication partners and the cells that need to be comunicated
 void dd_p4est_comm () {
+  // ********** TIMING **********
+  auto& timer_compl = Utils::Timing::Timer::get_timer("dd_p4est_comm");
+  auto& timer = Utils::Timing::Timer::get_timer("dd_p4est_comm::01-filling_bitmasks");
+  timer_compl.start();
+  timer.start();
+
   CALL_TRACE();
   
   // List of cell idx marked for send/recv for each process
@@ -566,6 +606,11 @@ void dd_p4est_comm () {
     for (int i=0;i<recv_idx[n].size();++i)
       fprintf(h,"%i:%li 0x%016lx\n",n,p4est_shell[recv_idx[n][i]].idx,recv_tag[n][i]);
   fclose(h);*/
+
+  // ********** TIMING **********
+  timer.stop();
+  auto& timer = Utils::Timing::Timer::get_timer("dd_p4est_comm::02-parsing_bitmasks");
+  timer.start();
   
   // prepare communicator
   CELL_TRACE(fprintf(stdout,"%i : proc %i send %i, recv %i\n",this_node,num_comm_proc,num_send,num_recv));
@@ -627,9 +672,17 @@ void dd_p4est_comm () {
     for (int i=0;i<comm_recv[n].cnt;++i)
       fprintf(h,"%i:%i %i\n",comm_recv[n].rank,comm_recv[n].idx[i],comm_recv[n].dir);
   fclose(h);*/
+
+  // ********** TIMING **********
+  timer.stop();
+  timer_compl.stop();
 }
 //--------------------------------------------------------------------------------------------------
 void dd_p4est_prepare_comm (GhostCommunicator *comm, int data_part) {
+  // ********** TIMING **********
+  auto& timer_compl = Utils::Timing::Timer::get_timer("dd_p4est_prepare_comm");
+  timer_compl.start();
+
   CALL_TRACE();
   prepare_comm(comm, data_part, num_comm_send + num_comm_recv, true);
   int cnt = 0;
@@ -667,9 +720,15 @@ void dd_p4est_prepare_comm (GhostCommunicator *comm, int data_part) {
       comm->comm[cnt].part_lists[n] = &cells[comm_recv[i].idx[n]];
     ++cnt;
   }
+
+  timer_compl.stop();
 }
 //--------------------------------------------------------------------------------------------------
 void dd_p4est_mark_cells () {
+  // ********** TIMING **********
+  auto& timer_compl = Utils::Timing::Timer::get_timer("dd_p4est_mar_cells");
+  timer_compl.start();
+
   CALL_TRACE();
   // Take the memory map as they are. First local cells (along Morton curve).
   // This also means cells has the same ordering as p4est_shell
@@ -680,6 +739,9 @@ void dd_p4est_mark_cells () {
   for (int c=0;c<num_ghost_cells;++c)
     ghost_cells.cell[c] = &cells[num_local_cells + c];
 #endif
+
+  // ********** TIMING **********
+  timer_compl.stop();
 }
 //--------------------------------------------------------------------------------------------------
 void dd_p4est_update_comm_w_boxl(GhostCommunicator *comm) {
@@ -699,6 +761,10 @@ void dd_p4est_update_comm_w_boxl(GhostCommunicator *comm) {
 }
 //--------------------------------------------------------------------------------------------------
 void dd_p4est_init_cell_interaction() {
+  // ********** TIMING **********
+  auto& timer_compl = Utils::Timing::Timer::get_timer("dd_p4est_init_cell_interaction");
+  timer_compl.start();
+
 #ifndef P4EST_NOCHANGE
   dd.cell_inter = (IA_Neighbor_List*)Utils::realloc(dd.cell_inter,local_cells.n*sizeof(IA_Neighbor_List));
   for (int i=0;i<local_cells.n; i++) { 
@@ -724,6 +790,9 @@ void dd_p4est_init_cell_interaction() {
     dd.cell_inter[i].n_neighbors = CELLS_MAX_NEIGHBORS;
   }
 #endif
+
+  // ********** TIMING **********
+  timer_compl.stop();
 }
 //--------------------------------------------------------------------------------------------------
 Cell* dd_p4est_save_position_to_cell(double pos[3]) {
