@@ -1,5 +1,5 @@
-#ifndef UTILS_TIMER_HPP
-#define UTILS_TIMER_HPP
+#ifndef __UTILS_TIMING_HPP
+#define __UTILS_TIMING_HPP
 
 #include <map>
 #include <string>
@@ -7,10 +7,8 @@
 
 #include <boost/serialization/access.hpp>
 
-#include <mpi.h>
-
-#include "MpiCallbacks.hpp"
 #include "utils/statistics/RunningAverage.hpp"
+#include <mpi.h>
 
 /**
  * @brief Time events and keep staistics.
@@ -19,9 +17,11 @@
  */
 namespace Utils {
 namespace Timing {
+
 class Timer {
 public:
   struct Stats {
+  public:
     Stats() {}
     Stats(double avg, double sig, double var, double min, double max, int n)
         : m_avg(avg), m_sig(sig), m_var(var), m_min(min), m_max(max), m_n(n) {}
@@ -72,31 +72,25 @@ public:
 
   void reset() { m_running_average.clear(); }
 
+  static void reset_all() {
+    for (auto &t : m_timers) {
+      t.second.reset();
+    }
+  }
+
   static Timer &get_timer(const std::string &name) { return m_timers[name]; }
 
   static std::map<std::string, Stats> get_stats() {
     std::map<std::string, Stats> ret;
 
-    for (auto &it : m_timers) {
+    for (auto const &it : m_timers) {
       ret[it.first] = it.second.stats();
     }
 
     return ret;
   }
 
-  /**
-   * @brief Collect stats from all nodes.
-   *
-   * Can only be called on the master node.
-   */
-  static std::vector<std::map<std::string, Utils::Timing::Timer::Stats>>
-    get_all_stats();
 private:
-  friend Communication::MpiCallbacks;
-  static void mpi_callback(int, int);
-
-  static const Communication::CallbackAdder cb_adder;
-
   static std::unordered_map<std::string, Timer> m_timers;
   Statistics::RunningAverage<double> m_running_average;
   double m_mark;

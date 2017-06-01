@@ -40,7 +40,7 @@ public:
   /** Type of the callback functions. */
   typedef std::function<void(int, int)> function_type;
 
-  explicit MpiCallbacks(boost::mpi::communicator const& comm) : m_comm(comm) {
+  MpiCallbacks(boost::mpi::communicator const& comm) : m_comm(comm) {
     /** Add a dummy at id 0 for loop abort. */
     m_callbacks.add(function_type());
   }
@@ -89,7 +89,7 @@ public:
    * @param par1 First parameter to pass to the callback.
    * @param par2 Second parameter to pass to the callback.
    */
-  void call(int id, int par1 = 0, int par2 = 0) const;
+  void call(int id, int par1, int par2) const;
 
   /**
    * @brief call a callback.
@@ -103,7 +103,7 @@ public:
    * @param par1 First parameter to pass to the callback.
    * @param par2 Second parameter to pass to the callback.
    */
-  void call(func_ptr_type fp, int par1 = 0, int par2 = 0) const;
+  void call(func_ptr_type fp, int par1, int par2) const;
 
   /**
    * @brief Mpi slave loop.
@@ -174,39 +174,6 @@ private:
  *
  */
 MpiCallbacks &mpiCallbacks();
-
-/**
- * @brief Convenience class to register a static callback
- * automatically before main.
- *
- * To use decalare a static CallbackAdder member of your class
- * and initialize it with an static callback function or a lambda,
- * or a initializer list thereof.
- */
-class CallbackAdder {
-public:
-  explicit CallbackAdder(MpiCallbacks::function_type const &callback) {
-    mpiCallbacks().add(callback);
-  }
-
-  explicit CallbackAdder(MpiCallbacks::func_ptr_type callback) {
-    mpiCallbacks().add(callback);
-  }
-
-  explicit CallbackAdder(
-      std::initializer_list<MpiCallbacks::function_type> il) {
-    for (auto it : il) {
-      mpiCallbacks().add(it);
-    }
-  }
-
-  explicit CallbackAdder(
-      std::initializer_list<MpiCallbacks::func_ptr_type> il) {
-    for (auto it : il) {
-      mpiCallbacks().add(it);
-    }
-  }
-};
 
 } /* namespace Communication */
 
