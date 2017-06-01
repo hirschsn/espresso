@@ -67,6 +67,7 @@
 #include "h5mdfile_tcl.hpp"
 #include "mpiio_tcl.hpp"
 #include "p4est_dd_tcl.hpp"
+#include "timer_tcl.hpp"
 
 
 #ifdef TK
@@ -279,6 +280,7 @@ static void tcl_register_commands(Tcl_Interp* interp) {
   REGISTER_COMMAND("scafacos_methods", tclcommand_scafacos_methods);
 #endif
   REGISTER_COMMAND("repart", tclcommand_repart);
+  REGISTER_COMMAND("timer", tclcommand_timer);
 }
 
 static void tcl_register_global_variables(Tcl_Interp *interp)
