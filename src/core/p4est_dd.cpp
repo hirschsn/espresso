@@ -222,13 +222,20 @@ void dd_p4est_create_grid () {
   // ********** TIMING **********
   timer1.stop();
   auto& timer2 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-02-p4est_calls");
+  auto& timer2_1 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-02-p4est_calls-01-new_brick_new_ext");
   timer2.start();
+  timer2_1.start();
 
   // create p4est structs
   p4est_conn = p8est_connectivity_new_brick (brick_size[0], brick_size[1], brick_size[2], 
                                              PERIODIC(0), PERIODIC(1), PERIODIC(2));
   p4est = p4est_new_ext (comm_cart, p4est_conn, 0, grid_level, true, 
                          sizeof(quad_data_t), init_fn, NULL);
+
+  timer2_1.stop();
+  auto& timer2_2 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-02-p4est_calls-02-partition");
+  timer2_2.start();
+
   // Repartition uniformly if part_nquads is empty (because not repart has been
   // done yet). Else use part_nquads as given partitioning.
   if (part_nquads.size() == 0)
@@ -236,10 +243,20 @@ void dd_p4est_create_grid () {
   else
     p4est_partition_given(p4est, part_nquads.data());
 
+  timer2_2.stop();
+  auto& timer2_3 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-02-p4est_calls-02-ghost_new");
+  timer2_3.start();
+
   p4est_ghost = p4est_ghost_new(p4est, P8EST_CONNECT_CORNER);
+
+  timer2_3.stop();
+  auto& timer2_4 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-02-p4est_calls-02-mesh_new_ext");
+  timer2_4.start();
+
   p4est_mesh = p4est_mesh_new_ext(p4est, p4est_ghost, 1, 1, 0, P8EST_CONNECT_CORNER);
 
   // ********** TIMING **********
+  timer2_4.stop();
   timer2.stop();
   auto& timer3 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-03-space_idx");
   timer3.start();
