@@ -17,6 +17,7 @@
 #include "domain_decomposition.hpp"
 #include "ghosts.hpp"
 #include "repart.hpp"
+#include "utils/Timer.hpp"
 //--------------------------------------------------------------------------------------------------
 #define CELLS_MAX_NEIGHBORS 14
 //--------------------------------------------------------------------------------------------------
@@ -609,7 +610,7 @@ void dd_p4est_comm () {
 
   // ********** TIMING **********
   timer.stop();
-  auto& timer = Utils::Timing::Timer::get_timer("dd_p4est_comm::02-parsing_bitmasks");
+  timer = Utils::Timing::Timer::get_timer("dd_p4est_comm::02-parsing_bitmasks");
   timer.start();
   
   // prepare communicator
