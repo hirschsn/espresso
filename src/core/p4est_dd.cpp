@@ -184,9 +184,9 @@ int dd_p4est_cellsize_even () {
 void dd_p4est_create_grid () {
   // ********** TIMING **********
   auto& timer_compl = Utils::Timing::Timer::get_timer("dd_p4est_create_grid");
-  auto& timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::01-boilerplate start");
+  auto& timer1 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-01-boilerplate_start");
   timer_compl.start();
-  timer.start();
+  timer1.start();
 
   //printf("%i : new MD grid\n", this_node);
   CALL_TRACE();
@@ -220,9 +220,9 @@ void dd_p4est_create_grid () {
 #endif
 
   // ********** TIMING **********
-  timer.stop();
-  timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::02-p4est calls");
-  timer.start();
+  timer1.stop();
+  auto& timer2 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-02-p4est_calls");
+  timer2.start();
 
   // create p4est structs
   p4est_conn = p8est_connectivity_new_brick (brick_size[0], brick_size[1], brick_size[2], 
@@ -240,9 +240,9 @@ void dd_p4est_create_grid () {
   p4est_mesh = p4est_mesh_new_ext(p4est, p4est_ghost, 1, 1, 0, P8EST_CONNECT_CORNER);
 
   // ********** TIMING **********
-  timer.stop();
-  timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::03-space_idx");
-  timer.start();
+  timer2.stop();
+  auto& timer3 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-03-space_idx");
+  timer3.start();
   
   CELL_TRACE(printf("%i : %i %i-%i %i\n",
     this_node,periodic,p4est->first_local_tree,p4est->last_local_tree,p4est->local_num_quadrants));
@@ -279,9 +279,9 @@ void dd_p4est_create_grid () {
   }
 
   // ********** TIMING **********
-  timer.stop();
-  timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::04-cell_neigh");
-  timer.start();
+  timer3.stop();
+  auto& timer4 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-04-cell_neigh");
+  timer4.start();
   
   // geather cell neighbors
   std::vector<uint64_t> quads;
@@ -334,9 +334,9 @@ void dd_p4est_create_grid () {
   }
 
   // ********** TIMING **********
-  timer.stop();
-  timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::05-ghosts");
-  timer.start();
+  timer4.stop();
+  auto& timer5 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-05-ghosts");
+  timer5.start();
     
   //char fname[100];
   //sprintf(fname,"cells_%i.list",this_node);
@@ -437,9 +437,9 @@ void dd_p4est_create_grid () {
   
   //fclose(h);
   // ********** TIMING **********
-  timer.stop();
-  timer = Utils::Timing::Timer::get_timer("dd_p4est_create_grid::06-boilerplate_final");
-  timer.start();
+  timer5.stop();
+  auto& timer6 = Utils::Timing::Timer::get_timer("dd_p4est_create_grid-06-boilerplate_final");
+  timer6.start();
   
   // Copy the generated data to globals
   num_cells = (size_t)quads.size();
@@ -466,7 +466,7 @@ void dd_p4est_create_grid () {
 
 
   // ********** TIMING **********
-  timer.stop();
+  timer6.stop();
   timer_compl.stop();
 }
 //--------------------------------------------------------------------------------------------------
@@ -475,9 +475,9 @@ void dd_p4est_create_grid () {
 void dd_p4est_comm () {
   // ********** TIMING **********
   auto& timer_compl = Utils::Timing::Timer::get_timer("dd_p4est_comm");
-  auto& timer = Utils::Timing::Timer::get_timer("dd_p4est_comm::01-filling_bitmasks");
+  auto& timer1 = Utils::Timing::Timer::get_timer("dd_p4est_comm-01-filling_bitmasks");
   timer_compl.start();
-  timer.start();
+  timer1.start();
 
   CALL_TRACE();
   
@@ -609,9 +609,9 @@ void dd_p4est_comm () {
   fclose(h);*/
 
   // ********** TIMING **********
-  timer.stop();
-  timer = Utils::Timing::Timer::get_timer("dd_p4est_comm::02-parsing_bitmasks");
-  timer.start();
+  timer1.stop();
+  auto& timer2 = Utils::Timing::Timer::get_timer("dd_p4est_comm-02-parsing_bitmasks");
+  timer2.start();
   
   // prepare communicator
   CELL_TRACE(fprintf(stdout,"%i : proc %i send %i, recv %i\n",this_node,num_comm_proc,num_send,num_recv));
@@ -675,7 +675,7 @@ void dd_p4est_comm () {
   fclose(h);*/
 
   // ********** TIMING **********
-  timer.stop();
+  timer2.stop();
   timer_compl.stop();
 }
 //--------------------------------------------------------------------------------------------------
@@ -722,12 +722,13 @@ void dd_p4est_prepare_comm (GhostCommunicator *comm, int data_part) {
     ++cnt;
   }
 
+  // ********** TIMING **********
   timer_compl.stop();
 }
 //--------------------------------------------------------------------------------------------------
 void dd_p4est_mark_cells () {
   // ********** TIMING **********
-  auto& timer_compl = Utils::Timing::Timer::get_timer("dd_p4est_mar_cells");
+  auto& timer_compl = Utils::Timing::Timer::get_timer("dd_p4est_mark_cells");
   timer_compl.start();
 
   CALL_TRACE();
