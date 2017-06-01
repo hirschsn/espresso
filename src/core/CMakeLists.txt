@@ -27,7 +27,7 @@ set_target_properties(EspressoCore PROPERTIES SOVERSION ${SOVERSION})
 install(TARGETS EspressoCore LIBRARY DESTINATION ${LIBDIR})
 add_dependencies(EspressoCore EspressoConfig)
 
-target_link_libraries(EspressoCore ${LIBRARIES} Actor ObjectInFluid ImmersedBoundary)
+target_link_libraries(EspressoCore ${LIBRARIES} Actor ObjectInFluid ImmersedBoundary EspressoUtils)
 
 if(SCAFACOS)
   target_link_libraries(EspressoCore Scafacos)
@@ -56,6 +56,7 @@ if(WITH_UNIT_TESTS)
   add_subdirectory(unit_tests)
 endif(WITH_UNIT_TESTS)
 
+add_subdirectory(utils)
 add_subdirectory(actor)
 add_subdirectory(immersed_boundary)
 add_subdirectory(object-in-fluid)
