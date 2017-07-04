@@ -66,6 +66,69 @@ typedef struct {
 // Empty as long as tclcommand_repart has not been called.
 static std::vector<p4est_locidx_t> part_nquads;
 //--------------------------------------------------------------------------------------------------
+struct CommunicationStatus {
+  enum class ReceiveStatus {
+    RECV_NOTSTARTED,
+    RECV_COUNT,
+    RECV_PARTICLES,
+    RECV_DYNDATA,
+    RECV_DONE
+  };
+
+  CommunicationStatus(int ncomm)
+      : nextstatus(ncomm, ReceiveStatus::RECV_COUNT),
+        donestatus(ncomm, ReceiveStatus::RECV_NOTSTARTED)
+  {
+  }
+
+  ReceiveStatus expected(int idx)
+  {
+    if (nextstatus[idx] <= donestatus[idx]) {
+      std::cerr << "[" << this_node << "] "
+                << "Error in communication sequence: "
+                << "Expecting status " << static_cast<int>(nextstatus[idx])
+                << " to happen but is already done ("
+                << static_cast<int>(donestatus[idx]) << ")" << std::endl;
+      errexit();
+    }
+
+    incr_recvstatus(donestatus[idx]);
+    return nextstatus[idx];
+  }
+
+  void next(int idx) { incr_recvstatus(nextstatus[idx]); }
+
+  static void incr_recvstatus(ReceiveStatus &r)
+  {
+    if (r == ReceiveStatus::RECV_DONE) {
+      std::cerr << "[" << this_node << "] "
+                << "Trying to increment bad communication status: "
+                << static_cast<int>(r) << std::endl;
+    }
+    r = static_cast<ReceiveStatus>(static_cast<int>(r) + 1);
+  }
+
+ private:
+  std::vector<ReceiveStatus> nextstatus;
+  std::vector<ReceiveStatus> donestatus;
+};
+
+static inline void DIE_IF_TAG_MISMATCH(int act, int desired, const char *str) {
+  if (act != desired) {
+    std::cerr << "[" << this_node << "] TAG MISMATCH!"
+              << "Desired: " << desired << " Got: " << act << std::endl;
+    errexit();
+  }
+}
+
+static const int LOC_EX_CNT_TAG  = 11011;
+static const int LOC_EX_PART_TAG = 11022;
+static const int LOC_EX_DYN_TAG  = 11033;
+static const int GLO_EX_CNT_TAG  = 22011;
+static const int GLO_EX_PART_TAG = 22022;
+static const int GLO_EX_DYN_TAG  = 22033;
+static const int COMM_RANK_NONE  = 999999;
+//--------------------------------------------------------------------------------------------------
 int dd_p4est_full_shell_neigh(int cell, int neighidx)
 {
     if (neighidx >= 0 && neighidx < 26)
@@ -123,38 +186,35 @@ void dd_p4est_free () {
   dd.p4est_shell = NULL;
 }
 //--------------------------------------------------------------------------------------------------
+static inline int count_trailing_zeros(int x)
+{
+  int z = 0;
+  for (; (x & 1) == 0; x >>= 1) z++;
+  return z;
+}
+
 // Compute the grid- and bricksize according to box_l and maxrange
-int dd_p4est_cellsize_optimal () {
-  int cnt[3];
-  int lvl = 0;
-  
+int dd_p4est_cellsize_optimal() {
+  int ncells[3] = {1, 1, 1};
+
   // compute number of cells
-  cnt[0] = cnt[1] = cnt[2] = 1;
-  if (max_range > ROUND_ERROR_PREC) {
-    if (box_l[0] > max_range) cnt[0] = box_l[0]/max_range;
-    if (box_l[1] > max_range) cnt[1] = box_l[1]/max_range;
-    if (box_l[2] > max_range) cnt[2] = box_l[2]/max_range;
-    if (cnt[0] < 1) cnt[0] = 1;
-    if (cnt[1] < 1) cnt[1] = 1;
-    if (cnt[2] < 1) cnt[2] = 1;
+  if (max_range > ROUND_ERROR_PREC * box_l[0]) {
+    ncells[0] = std::max<int>(box_l[0] / max_range, 1);
+    ncells[1] = std::max<int>(box_l[1] / max_range, 1);
+    ncells[2] = std::max<int>(box_l[2] / max_range, 1);
   }
-  
-  grid_size[0] = cnt[0];
-  grid_size[1] = cnt[1];
-  grid_size[2] = cnt[2];
-  
+
+  grid_size[0] = ncells[0];
+  grid_size[1] = ncells[1];
+  grid_size[2] = ncells[2];
+
   // divide all dimensions by biggest common power of 2
-  while (((cnt[0]|cnt[1]|cnt[2])&1) == 0) {
-    ++lvl;
-    cnt[0] >>= 1;
-    cnt[1] >>= 1;
-    cnt[2] >>= 1;
-  }
-  
-  brick_size[0] = cnt[0];
-  brick_size[1] = cnt[1];
-  brick_size[2] = cnt[2];
-  
+  int lvl = count_trailing_zeros(ncells[0] | ncells[1] | ncells[2]);
+
+  brick_size[0] = ncells[0] >> lvl;
+  brick_size[1] = ncells[1] >> lvl;
+  brick_size[2] = ncells[2] >> lvl;
+
   return lvl; // return the level of the grid
 }
 //--------------------------------------------------------------------------------------------------
@@ -163,20 +223,16 @@ int dd_p4est_cellsize_even () {
   brick_size[0] = box_l[0];
   brick_size[1] = box_l[1];
   brick_size[2] = box_l[2];
-  
-  int cnt = 1;
-  int lvl = 0;
-  if (max_range > ROUND_ERROR_PREC) cnt = 1.0/max_range;
-  if (cnt < 1) cnt = 1;
-  
-  while ((cnt&1) == 0) {
-    ++lvl;
-    cnt >>= 1;
-  }
-  
-  grid_size[0] = brick_size[0]<<lvl;
-  grid_size[1] = brick_size[1]<<lvl;
-  grid_size[2] = brick_size[2]<<lvl;
+
+  int ncells = 1;
+  if (max_range > ROUND_ERROR_PREC * box_l[0])
+    ncells = std::max<int>(1.0 / max_range, 1);
+
+  int lvl = Utils::nat_log2_floor(ncells);
+
+  grid_size[0] = brick_size[0] << lvl;
+  grid_size[1] = brick_size[1] << lvl;
+  grid_size[2] = brick_size[2] << lvl;
 
   return lvl; // Return level > 0 if max_range <= 0.5
 }
@@ -499,24 +555,24 @@ void dd_p4est_comm () {
   CALL_TRACE();
   
   // List of cell idx marked for send/recv for each process
-  std::vector<int>      send_idx[n_nodes];
-  std::vector<int>      recv_idx[n_nodes];
+  std::vector<std::vector<int>>      send_idx(n_nodes);
+  std::vector<std::vector<int>>      recv_idx(n_nodes);
   // List of all directions for those communicators encoded in a bitmask
-  std::vector<uint64_t> send_tag[n_nodes];
-  std::vector<uint64_t> recv_tag[n_nodes];
+  std::vector<std::vector<uint64_t>> send_tag(n_nodes);
+  std::vector<std::vector<uint64_t>> recv_tag(n_nodes);
   // Or-Sum (Union) over the lists above
-  uint64_t send_cnt_tag[n_nodes];
-  uint64_t recv_cnt_tag[n_nodes];
+  std::vector<uint64_t> send_cnt_tag(n_nodes, 0UL);
+  std::vector<uint64_t> recv_cnt_tag(n_nodes, 0UL);
   // Number of cells for each communication (rank and direction)
-  int send_cnt[n_nodes][64];
-  int recv_cnt[n_nodes][64];
+  std::vector<std::array<int, 64>> send_cnt(n_nodes);
+  std::vector<std::array<int, 64>> recv_cnt(n_nodes);
   
   // Total number of send and recv
   int num_send = 0;
   int num_recv = 0;
   // Is 1 for a process if there is any communication, 0 if none
-  int8_t num_send_flag[n_nodes];
-  int8_t num_recv_flag[n_nodes];
+  std::vector<int8_t> num_send_flag(n_nodes, 0);
+  std::vector<int8_t> num_recv_flag(n_nodes, 0);
   
   // Prepare all lists
   num_comm_proc = 0;
@@ -524,13 +580,7 @@ void dd_p4est_comm () {
   comm_proc = new int[n_nodes];
   
   for (int i=0;i<n_nodes;++i) {
-    num_send_flag[i] = 0;
-    num_recv_flag[i] = 0;
     comm_proc[i] = -1;
-    send_idx[i].clear();
-    recv_idx[i].clear();
-    send_cnt_tag[i] = 0;
-    recv_cnt_tag[i] = 0;
     for (int j=0;j<64;++j) {
       send_cnt[i][j] = 0;
       recv_cnt[i][j] = 0;
@@ -650,7 +700,9 @@ void dd_p4est_comm () {
   comm_recv = new comm_t[num_recv];
   comm_send = new comm_t[num_send];
   comm_rank = new int[num_comm_proc];
-  
+
+  std::fill(comm_rank, comm_rank + num_comm_proc, COMM_RANK_NONE);
+
   // Parse all bitmasks and fill the actual lists
   for (int n=0,s_cnt=0,r_cnt=0;n<n_nodes;++n) {
     if (comm_proc[n] >= 0) comm_rank[comm_proc[n]] = n;
@@ -677,7 +729,18 @@ void dd_p4est_comm () {
       }
     }
   }
-  
+
+  // Debug or rather sanity check
+  {
+    for (int i = 0; i < num_comm_proc; i++) {
+      if (comm_rank[i] == COMM_RANK_NONE) {
+        std::cerr << "[" << this_node << "]"
+                  << "Error: Comm_rank[" << i << "] is NONE." << std::endl;
+        errexit();
+      }
+    }
+  }
+
   /*sprintf(fname,"send_%i.list",this_node);
   h = fopen(fname,"w");
   for (int n=0;n<num_comm_send;++n)
@@ -814,105 +877,78 @@ void dd_p4est_init_cell_interaction() {
   timer_compl.stop();
 }
 //--------------------------------------------------------------------------------------------------
-Cell* dd_p4est_save_position_to_cell(double pos[3]) {
-  CALL_TRACE();
-    
-  // Mapping a position to the local domain is not as easy since the domain is not a cube
-  // Loop over all cells and check if position is inside cell
-  
-  // Note: Since the local cells are sorted along a space filling curve. The List can be used as
-  // search tree. But for simplicity reasons this is not implemendet yet. It would reduce
-  // the complexity from O(N) to O(log(N)).
-  
-  int i;
-  int scale_pos[3], scale_pos_l[3], scale_pos_h[3];
-  
-  // To check the extended domain create the shifted positions
-  for (int d=0;d<3;++d) {
-    scale_pos[d] = pos[d]*dd.inv_cell_size[d];
-    scale_pos_l[d] = (pos[d] + ROUND_ERROR_PREC*box_l[d])*dd.inv_cell_size[d];
-    scale_pos_h[d] = (pos[d] - ROUND_ERROR_PREC*box_l[d])*dd.inv_cell_size[d];
-    
-    if (!PERIODIC(d) && scale_pos[d] < 0) scale_pos[d] = 0;
-    if (!PERIODIC(d) && scale_pos_l[d] < 0) scale_pos_l[d] = 0;
-    if (!PERIODIC(d) && scale_pos_h[d] < 0) scale_pos_h[d] = 0;
-    if (!PERIODIC(d) && scale_pos[d] >= grid_size[d]) scale_pos[d] = grid_size[d] - 1;
-    if (!PERIODIC(d) && scale_pos_l[d] >= grid_size[d]) scale_pos_l[d] = grid_size[d] - 1;
-    if (!PERIODIC(d) && scale_pos_h[d] >= grid_size[d]) scale_pos_h[d] = grid_size[d] - 1;
-  }
-  
-  // Loop all cells and break if containing cell is found
-  for (i=0;i<num_local_cells;++i) {
-    if ((p4est_shell[i].boundary & 1)) {
-      if (scale_pos_l[0] < p4est_shell[i].coord[0]) continue;
-    } else {
-      if (scale_pos[0] < p4est_shell[i].coord[0]) continue;
-    }
-    if ((p4est_shell[i].boundary & 2)) {
-      if (scale_pos_h[0] > p4est_shell[i].coord[0]) continue;
-    } else {
-      if (scale_pos[0] > p4est_shell[i].coord[0]) continue;
-    }
-    if ((p4est_shell[i].boundary & 4)) {
-      if (scale_pos_l[1] < p4est_shell[i].coord[1]) continue;
-    } else {
-      if (scale_pos[1] < p4est_shell[i].coord[1]) continue;
-    }
-    if ((p4est_shell[i].boundary & 8)) {
-      if (scale_pos_h[1] > p4est_shell[i].coord[1]) continue;
-    } else {
-      if (scale_pos[1] > p4est_shell[i].coord[1]) continue;
-    }
-    if ((p4est_shell[i].boundary & 16)) {
-      if (scale_pos_l[2] < p4est_shell[i].coord[2]) continue;
-    } else {
-      if (scale_pos[2] < p4est_shell[i].coord[2]) continue;
-    }
-    if ((p4est_shell[i].boundary & 32)) {
-      if (scale_pos_h[2] > p4est_shell[i].coord[2]) continue;
-    } else {
-      if (scale_pos[2] > p4est_shell[i].coord[2]) continue;
-    }
-    break;
-  }
-  
-  // return the index
-  if (i < num_local_cells) return &cells[i];
-  return NULL;
-}
-//--------------------------------------------------------------------------------------------------
-Cell* dd_p4est_position_to_cell(double pos[3]) {
-#ifdef ADDITIONAL_CHECKS
-  runtimeErrorMsg() << "function " << __FUNCTION__ << " in " << __FILE__ 
-    << "[" << __LINE__ << "] is not implemented";
-#endif
+Cell* dd_p4est_position_to_cell_strict(double pos[3]) {
   CALL_TRACE();
   
   // Does the same as dd_p4est_save_position_to_cell but does not extend the local domain
   // by the error bounds
-  
-  int i;
-  //int scale_pos[3];
-  
-  int64_t pidx = dd_p4est_pos_morton_idx(pos);
-  
-  /*for (int d=0;d<3;++d) {
-    scale_pos[d] = pos[d]*dd.inv_cell_size[d];
-    
-    if (!PERIODIC(d) && scale_pos[d] < 0) scale_pos[d] = 0;
-    if (!PERIODIC(d) && scale_pos[d] >= grid_size[d]) scale_pos[d] = grid_size[d] - 1;
-  }*/
-    
-  for (i=0;i<num_local_cells;++i) {
-    //if (scale_pos[0] != p4est_shell[i].coord[0]) continue;
-    //if (scale_pos[1] != p4est_shell[i].coord[1]) continue;
-    //if (scale_pos[2] != p4est_shell[i].coord[2]) continue;
-    if (pidx == dd_p4est_cell_morton_idx(p4est_shell[i].coord[0],p4est_shell[i].coord[1],p4est_shell[i].coord[2]))
-      break;
+
+  auto shellidxcomp = [](const local_shell_t& s, int64_t idx) {
+    int64_t sidx = dd_p4est_cell_morton_idx(s.coord[0],
+                                            s.coord[1],
+                                            s.coord[2]);
+    return sidx < idx;
+  };
+
+  const auto needle = dd_p4est_pos_morton_idx(pos);
+
+  const auto p4est_shell_end = p4est_shell + num_local_cells;
+  auto it = std::lower_bound(p4est_shell,
+                             p4est_shell_end,
+                             needle,
+                             shellidxcomp);
+  if (it != p4est_shell_end
+        && dd_p4est_cell_morton_idx(it->coord[0],
+                                    it->coord[1],
+                                    it->coord[2]) == needle)
+    return &cells[std::distance(p4est_shell, it)];
+  else
+    return NULL;
+}
+//--------------------------------------------------------------------------------------------------
+Cell* dd_p4est_save_position_to_cell(double pos[3]) {
+  Cell *c;
+  // This function implicitly uses binary search by using
+  // dd_p4est_position_to_cell
+
+  if ((c = dd_p4est_position_to_cell_strict(pos)))
+    return c;
+
+  // If pos is outside of the local domain try the bounding box enlarged
+  // by ROUND_ERROR_PREC
+  for (int i = -1; i <= 1; i += 2) {
+    for (int j = -1; j <= 1; j += 2) {
+      for (int k = -1; k <= 1; k += 2) {
+        double spos[3] = { pos[0] + i * box_l[0] * ROUND_ERROR_PREC,
+                           pos[1] + j * box_l[1] * ROUND_ERROR_PREC,
+                           pos[2] + k * box_l[2] * ROUND_ERROR_PREC };
+        if ((c = dd_p4est_position_to_cell_strict(spos)))
+          return c;
+      }
+    }
   }
-  
-  if (i < num_local_cells) return &cells[i];
+
   return NULL;
+}
+//--------------------------------------------------------------------------------------------------
+Cell* dd_p4est_position_to_cell(double pos[3]) {
+  // Accept OOB particles for the sake of IO.
+  // If this is used, you need to manually do a global(!) resort afterwards
+  // i.e. in Tcl: sort_particles.
+  // xTODO: This could be done automatically: Add another flag to cells.hpp:
+  // "int force_global_resort" and MPI_Reduce it in cells_resort_particles.
+  // Need to clarify first if this has negative implications on the normal
+  // function of ESPResSo since this means, oob particles would silently(!)
+  // be accepted.
+  // Is now implemented as follows: In communication.cpp in mpi_mpiio a
+  // global exchange is performed.
+  Cell *c = dd_p4est_position_to_cell_strict(pos);
+
+  if (c) {
+    return c;
+  } else {
+    return &cells[0];
+  }
 }
 //--------------------------------------------------------------------------------------------------
 // Checks all particles and resorts them to local cells or sendbuffers
@@ -1070,99 +1106,90 @@ static void dd_async_exchange_insert_dyndata(ParticleList *recvbuf, std::vector<
   }
 }
 //--------------------------------------------------------------------------------------------------
-static void dd_resort_particles() {
-  // Move all particles to the cell it belongs to. Only for particles that are in local domain
-  for(int c = 0; c < local_cells.n; c++) {
-    ParticleList *cell = local_cells.cell[c];
-    for (int p = 0; p < cell->n; p++) {
-      Particle *part = &cell->part[p];
-      ParticleList *sort_cell = dd_p4est_save_position_to_cell(part->r.p);
-      if (sort_cell == NULL) { // Not in local domain -> Error
-        fprintf(stderr, "[%i] dd_exchange_and_sort_particles: Particle %i (%lf, %lf, %lf) not inside subdomain\n", this_node, part->p.identity, part->r.p[0], part->r.p[1], part->r.p[2]);
-        errexit();
-      } else if (sort_cell != cell) { // Local cell that is not the current one
-        move_indexed_particle(sort_cell, cell, p);
-        if(p < cell->n) p--;
-      }
-    }
-  }
-}
-//--------------------------------------------------------------------------------------------------
-
 void dd_p4est_exchange_and_sort_particles() {
   // Prepare all send and recv buffers to all neighboring processes
-  ParticleList *sendbuf, *recvbuf;
-  std::vector<int> *sendbuf_dyn, *recvbuf_dyn;
+  std::vector<ParticleList> sendbuf(num_comm_proc), recvbuf(num_comm_proc);
+  std::vector<std::vector<int>> sendbuf_dyn(num_comm_proc),
+      recvbuf_dyn(num_comm_proc);
   std::vector<MPI_Request> sreq(3 * num_comm_proc, MPI_REQUEST_NULL);
   std::vector<MPI_Request> rreq(num_comm_proc, MPI_REQUEST_NULL);
   std::vector<int> nrecvpart(num_comm_proc, 0);
-  
-  sendbuf = new ParticleList[num_comm_proc];
-  recvbuf = new ParticleList[num_comm_proc];
-  sendbuf_dyn = new std::vector<int>[num_comm_proc];
-  recvbuf_dyn = new std::vector<int>[num_comm_proc];
-    
-  for (int i=0;i<num_comm_proc;++i) {
+
+  for (int i = 0; i < num_comm_proc; ++i) {
     init_particlelist(&sendbuf[i]);
     init_particlelist(&recvbuf[i]);
-    // Invoke the recv thread for number of particles from all neighbouring nodes
-    MPI_Irecv(&nrecvpart[i], 1, MPI_INT, comm_rank[i], 0, comm_cart, &rreq[i]);
+    // Invoke receive for the number of particles to be received from
+    // all neighbors
+    MPI_Irecv(&nrecvpart[i], 1, MPI_INT, comm_rank[i], LOC_EX_CNT_TAG,
+              comm_cart, &rreq[i]);
   }
-      
+
   // Fill the send buffers with particles that leave the local domain
-  dd_p4est_fill_sendbuf(sendbuf, sendbuf_dyn);
-  
-  
+  dd_p4est_fill_sendbuf(sendbuf.data(), sendbuf_dyn.data());
+
   // send number of particles, particles, and particle data
-  for (int i=0;i<num_comm_proc;++i) {
-    int nsend = sendbuf[i].n;
-    MPI_Isend(&nsend, 1, MPI_INT, comm_rank[i], 0, comm_cart, &sreq[i]);
-    MPI_Isend(sendbuf[i].part, sendbuf[i].n * sizeof(Particle), MPI_BYTE, comm_rank[i], 1, comm_cart, &sreq[i + num_comm_proc]);
-    if (sendbuf_dyn[i].size() > 0) {
-      MPI_Isend(sendbuf_dyn[i].data(), sendbuf_dyn[i].size(), MPI_INT, comm_rank[i], 2, comm_cart, &sreq[i + 2*num_comm_proc]);
-    }
+  for (int i = 0; i < num_comm_proc; ++i) {
+    MPI_Isend(&sendbuf[i].n, 1, MPI_INT, comm_rank[i], LOC_EX_CNT_TAG,
+              comm_cart, &sreq[i]);
+    if (sendbuf[i].n <= 0)
+      continue;
+    MPI_Isend(sendbuf[i].part, sendbuf[i].n * sizeof(Particle), MPI_BYTE,
+              comm_rank[i], LOC_EX_PART_TAG, comm_cart,
+              &sreq[i + num_comm_proc]);
+    if (sendbuf_dyn[i].size() <= 0)
+      continue;
+    MPI_Isend(sendbuf_dyn[i].data(), sendbuf_dyn[i].size(), MPI_INT,
+              comm_rank[i], LOC_EX_DYN_TAG, comm_cart,
+              &sreq[i + 2 * num_comm_proc]);
   }
-      
+
   // Receive all data
   MPI_Status status;
-  std::vector<int> recvs(num_comm_proc, 0); // number of recv for each process
-  int recvidx, tag, source;
+  CommunicationStatus commstat(num_comm_proc);
+
   while (true) {
+    int recvidx;
     MPI_Waitany(num_comm_proc, rreq.data(), &recvidx, &status);
     if (recvidx == MPI_UNDEFINED)
       break;
+    int dyndatasiz, source = status.MPI_SOURCE, tag = status.MPI_TAG;
 
-    source = status.MPI_SOURCE;
-    tag = status.MPI_TAG;
-    
-    int cnt;
-    MPI_Get_count(&status,MPI_BYTE,&cnt);
-    
-    // this is the first recv for the process. this means, that the Irecv fornumber of particles 
-    // has finished
-    if (recvs[recvidx] == 0) { 
-      // alloc recv buffer with number of particles
-      realloc_particlelist(&recvbuf[recvidx], nrecvpart[recvidx]);
-      // fill it
-      MPI_Irecv(recvbuf[recvidx].part, nrecvpart[recvidx] * sizeof(Particle), MPI_BYTE, source, 1, comm_cart, &rreq[recvidx]);
-    } else if (recvs[recvidx] == 1) { // filling the recv buffer has finished
-      // Particles received
-      recvbuf[recvidx].n = nrecvpart[recvidx];
-      // Add new particles to local storage
-      int dyndatasiz = dd_async_exchange_insert_particles(&recvbuf[recvidx], 0, source);
-      if (dyndatasiz > 0) { // If there is dynamic data, invoke recv thread for that as well
-        recvbuf_dyn[recvidx].resize(dyndatasiz);
-        MPI_Irecv(recvbuf_dyn[recvidx].data(), dyndatasiz, MPI_INT, source, /*tag*/2, comm_cart, &rreq[recvidx]);
+    switch (commstat.expected(recvidx)) {
+    case CommunicationStatus::ReceiveStatus::RECV_COUNT:
+      DIE_IF_TAG_MISMATCH(tag, LOC_EX_CNT_TAG, "Local exchange count");
+      if (nrecvpart[recvidx] > 0) {
+        realloc_particlelist(&recvbuf[recvidx], nrecvpart[recvidx]);
+        MPI_Irecv(recvbuf[recvidx].part, nrecvpart[recvidx] * sizeof(Particle),
+                  MPI_BYTE, source, LOC_EX_PART_TAG, comm_cart, &rreq[recvidx]);
+        commstat.next(recvidx);
       }
-    } else { // recv for dynamic data has finished
+      break;
+    case CommunicationStatus::ReceiveStatus::RECV_PARTICLES:
+      DIE_IF_TAG_MISMATCH(tag, LOC_EX_PART_TAG, "Local exchange particles");
+      recvbuf[recvidx].n = nrecvpart[recvidx];
+      dyndatasiz =
+          dd_async_exchange_insert_particles(&recvbuf[recvidx], 0, source);
+      if (dyndatasiz > 0) {
+        recvbuf_dyn[recvidx].resize(dyndatasiz);
+        MPI_Irecv(recvbuf_dyn[recvidx].data(), dyndatasiz, MPI_INT, source,
+                  LOC_EX_DYN_TAG, comm_cart, &rreq[recvidx]);
+        commstat.next(recvidx);
+      }
+      break;
+    case CommunicationStatus::ReceiveStatus::RECV_DYNDATA:
+      DIE_IF_TAG_MISMATCH(tag, LOC_EX_DYN_TAG, "Local exchange dyndata");
       dd_async_exchange_insert_dyndata(&recvbuf[recvidx], recvbuf_dyn[recvidx]);
+      commstat.next(recvidx);
+      break;
+    default:
+      std::cerr << "[" << this_node << "]"
+                << "Unknown comm status for receive index " << recvidx
+                << std::endl;
+      break;
     }
-    recvs[recvidx]++;
   }
-
-  
   MPI_Waitall(3 * num_comm_proc, sreq.data(), MPI_STATUS_IGNORE);
-  
+
   // clear all buffers and free memory
   for (int i = 0; i < num_comm_proc; ++i) {
     // Remove particles from this nodes local list and free data
@@ -1175,95 +1202,119 @@ void dd_p4est_exchange_and_sort_particles() {
     sendbuf_dyn[i].clear();
     recvbuf_dyn[i].clear();
   }
-  
-  delete[] sendbuf;
-  delete[] recvbuf;
-  delete[] sendbuf_dyn;
-  delete[] recvbuf_dyn;
 
 #ifdef ADDITIONAL_CHECKS
   check_particle_consistency();
 #endif
 }
 //--------------------------------------------------------------------------------------------------
-void dd_p4est_global_exchange_part (ParticleList* pl) {
+void dd_p4est_global_exchange_part(ParticleList *pl)
+{
   // Prepare send/recv buffers to ALL processes
-  ParticleList sendbuf[n_nodes], recvbuf[n_nodes];
-  std::vector<int> sendbuf_dyn[n_nodes], recvbuf_dyn[n_nodes];
+  std::vector<ParticleList> sendbuf(n_nodes), recvbuf(n_nodes);
+  std::vector<std::vector<int>> sendbuf_dyn(n_nodes), recvbuf_dyn(n_nodes);
   std::vector<MPI_Request> sreq(3 * n_nodes, MPI_REQUEST_NULL);
   std::vector<MPI_Request> rreq(n_nodes, MPI_REQUEST_NULL);
   std::vector<int> nrecvpart(n_nodes, 0);
-    
-  for (int i=0;i<n_nodes;++i) {
+
+  for (int i = 0; i < n_nodes; ++i) {
     init_particlelist(&sendbuf[i]);
     init_particlelist(&recvbuf[i]);
-    
-    MPI_Irecv(&nrecvpart[i], 1, MPI_INT, i, 0, comm_cart, &rreq[i]);
+
+    MPI_Irecv(&nrecvpart[i], 1, MPI_INT, i, GLO_EX_CNT_TAG, comm_cart,
+              &rreq[i]);
   }
-  
-  // If pl == NULL do nothing, since there are no particles and cells on this node
+
+  // If pl == NULL do nothing, since there are no particles and cells on this
+  // node
   if (pl) {
     // Find the correct node for each particle in pl
     for (int p = 0; p < pl->n; p++) {
       Particle *part = &pl->part[p];
-      //fold_position(part->r.p, part->l.i);
+      // fold_position(part->r.p, part->l.i);
       int rank = dd_p4est_pos_to_proc(part->r.p);
-      if (rank != this_node) { // It is actually a remote particle -> copy all data to sendbuffer
+      if (rank != this_node) {  // It is actually a remote particle -> copy all
+                                // data to sendbuffer
         if (rank > n_nodes || rank < 0) {
-          fprintf(stderr,"process %i invalid\n", rank);
+          fprintf(stderr, "process %i invalid\n", rank);
           errexit();
         }
-        sendbuf_dyn[rank].insert(sendbuf_dyn[rank].end(), part->bl.e, part->bl.e + part->bl.n);
+        sendbuf_dyn[rank].insert(sendbuf_dyn[rank].end(), part->bl.e,
+                                 part->bl.e + part->bl.n);
 #ifdef EXCLUSIONS
-        sendbuf_dyn[rank].insert(sendbuf_dyn[rank].end(), part->el.e, part->el.e + part->el.n);
+        sendbuf_dyn[rank].insert(sendbuf_dyn[rank].end(), part->el.e,
+                                 part->el.e + part->el.n);
 #endif
         int pid = part->p.identity;
         move_indexed_particle(&sendbuf[rank], pl, p);
         local_particles[pid] = NULL;
-        if(p < pl->n) p -= 1;
+        if (p < pl->n)
+          p -= 1;
       }
     }
   }
-  
+
   // send number of particles, particles, and particle data
-  for (int i=0;i<n_nodes;++i) {
-    MPI_Isend(&sendbuf[i].n, 1, MPI_INT, i, 0, comm_cart, &sreq[i]);
-    MPI_Isend(sendbuf[i].part, sendbuf[i].n * sizeof(Particle), MPI_BYTE, i, 0, comm_cart, &sreq[i + n_nodes]);
-    if (sendbuf_dyn[i].size() > 0)
-      MPI_Isend(sendbuf_dyn[i].data(), sendbuf_dyn[i].size(), MPI_INT, i, 0, comm_cart, &sreq[i + 2*n_nodes]);
+  for (int i = 0; i < n_nodes; ++i) {
+    MPI_Isend(&sendbuf[i].n, 1, MPI_INT, i, GLO_EX_CNT_TAG, comm_cart, &sreq[i]);
+    if (sendbuf[i].n <= 0)
+      continue;
+    MPI_Isend(sendbuf[i].part, sendbuf[i].n * sizeof(Particle), MPI_BYTE, i,
+              GLO_EX_PART_TAG, comm_cart, &sreq[i + n_nodes]);
+    if (sendbuf_dyn[i].size() <= 0)
+      continue;
+    MPI_Isend(sendbuf_dyn[i].data(), sendbuf_dyn[i].size(), MPI_INT, i,
+              GLO_EX_DYN_TAG, comm_cart, &sreq[i + 2 * n_nodes]);
   }
-  
-  // Receive all data. The async communication scheme is the same as in exchange_and_sort_particles
+
+  // Receive all data. The async communication scheme is the same as in
+  // exchange_and_sort_particles
   MPI_Status status;
-  std::vector<int> recvs(n_nodes, 0);
-  int recvidx, tag, source;
+  CommunicationStatus commstat(n_nodes);
   while (true) {
+    int recvidx;
     MPI_Waitany(n_nodes, rreq.data(), &recvidx, &status);
     if (recvidx == MPI_UNDEFINED)
       break;
 
-    source = status.MPI_SOURCE;
-    tag = status.MPI_TAG;
+    int dyndatasiz, source = status.MPI_SOURCE, tag = status.MPI_TAG;
 
-    if (recvs[recvidx] == 0) {
-      // Size received
-      realloc_particlelist(&recvbuf[recvidx], nrecvpart[recvidx]);
-      MPI_Irecv(recvbuf[recvidx].part, nrecvpart[recvidx] * sizeof(Particle), MPI_BYTE, source, tag, comm_cart, &rreq[recvidx]);
-    } else if (recvs[recvidx] == 1) {
-      // Particles received
+    switch (commstat.expected(recvidx)) {
+    case CommunicationStatus::ReceiveStatus::RECV_COUNT:
+      DIE_IF_TAG_MISMATCH(tag, GLO_EX_CNT_TAG, "Global exchange count");
+      if (nrecvpart[recvidx] > 0) {
+        realloc_particlelist(&recvbuf[recvidx], nrecvpart[recvidx]);
+        MPI_Irecv(recvbuf[recvidx].part, nrecvpart[recvidx] * sizeof(Particle),
+                  MPI_BYTE, source, GLO_EX_PART_TAG, comm_cart, &rreq[recvidx]);
+        commstat.next(recvidx);
+      }
+      break;
+    case CommunicationStatus::ReceiveStatus::RECV_PARTICLES:
+      DIE_IF_TAG_MISMATCH(tag, GLO_EX_PART_TAG, "Global exchange particles");
       recvbuf[recvidx].n = nrecvpart[recvidx];
-      int dyndatasiz = dd_async_exchange_insert_particles(&recvbuf[recvidx], 1, source);
+      dyndatasiz =
+          dd_async_exchange_insert_particles(&recvbuf[recvidx], 0, source);
       if (dyndatasiz > 0) {
         recvbuf_dyn[recvidx].resize(dyndatasiz);
-        MPI_Irecv(recvbuf_dyn[recvidx].data(), dyndatasiz, MPI_INT, source, tag, comm_cart, &rreq[recvidx]);
+        MPI_Irecv(recvbuf_dyn[recvidx].data(), dyndatasiz, MPI_INT, source,
+                  GLO_EX_DYN_TAG, comm_cart, &rreq[recvidx]);
+        commstat.next(recvidx);
       }
-    } else {
+      break;
+    case CommunicationStatus::ReceiveStatus::RECV_DYNDATA:
+      DIE_IF_TAG_MISMATCH(tag, GLO_EX_DYN_TAG, "Global exchange dyndata");
       dd_async_exchange_insert_dyndata(&recvbuf[recvidx], recvbuf_dyn[recvidx]);
+      commstat.next(recvidx);
+      break;
+    default:
+      std::cerr << "[" << this_node << "]"
+                << "Unknown comm status for receive index " << recvidx
+                << std::endl;
+      break;
     }
-    recvs[recvidx]++;
   }
-  
   MPI_Waitall(3 * n_nodes, sreq.data(), MPI_STATUS_IGNORE);
+
   for (int i = 0; i < n_nodes; ++i) {
     // Remove particles from this nodes local list and free data
     for (int p = 0; p < sendbuf[i].n; p++) {
@@ -1308,18 +1359,11 @@ int64_t dd_p4est_pos_morton_idx(double pos[3]) {
 //--------------------------------------------------------------------------------------------------
 // Find the process that handles the position
 int dd_p4est_pos_to_proc(double pos[3]) {
-  // compute morton index of cell to which this position belongs
-  int64_t idx = dd_p4est_pos_morton_idx(pos);
-  // Note: Since p4est_space_idx is a ordered list, it is possible to do a binary search here.
-  // Doing so would reduce the complexity from O(N) to O(log(N))
-  if (idx >= 0) {
-    for (int i = 1; i <= n_nodes; ++i) {
-      // compare the first cell of a process with this cell
-      if (p4est_space_idx[i] > idx) return i - 1;
-    }
-  }
-  fprintf(stderr, "Could not resolve the proc of particle %lf %lf %lf\n", pos[0], pos[1], pos[2]);
-  errexit();
+  auto it = std::upper_bound(p4est_space_idx, p4est_space_idx + n_nodes,
+                             dd_p4est_pos_morton_idx(pos),
+                             [](int i, int64_t idx){ return i < idx; });
+
+  return std::distance(p4est_space_idx, it) - 1;
 }
 //--------------------------------------------------------------------------------------------------
 // Repartitions the given p4est, such that process boundaries do not intersect the partition of the
@@ -1371,62 +1415,7 @@ void dd_p4est_partition(p4est_t *p4est, p4est_mesh_t *mesh, p4est_connectivity_t
 //--------------------------------------------------------------------------------------------------
 // This is basically a copy of the dd_on_geometry_change
 void dd_p4est_on_geometry_change(int flags) {
-
-  /* check that the CPU domains are still sufficiently large. */
-  for (int i = 0; i < 3; i++)
-    if (box_l[i] < max_range) {
-        runtimeErrorMsg() <<"box_l in direction " << i << " is too small";
-    }
-
-  /* A full resorting is necessary if the grid has changed. We simply
-     don't have anything fast for this case. Probably also not
-     necessary. */
-  if ((flags & CELL_FLAG_GRIDCHANGED)) {
-    CELL_TRACE(fprintf(stderr,"%d: dd_on_geometry_change full redo\n",
-		       this_node));
-    cells_re_init(CELL_STRUCTURE_CURRENT);
-    return;
-  }
-
-  /* otherwise, re-set our geometrical dimensions which have changed
-     (in addition to the general ones that \ref grid_changed_box_l
-     takes care of) */
-  for(int i=0; i<3; i++) {
-    dd.cell_size[i]       = box_l[i]/(double)grid_size[i];
-    dd.inv_cell_size[i]   = 1.0 / dd.cell_size[i];
-  }
-
-  double min_cell_size = std::min(std::min(dd.cell_size[0],dd.cell_size[1]),dd.cell_size[2]);
-  max_skin = min_cell_size - max_cut;
-  
-  //printf("%i : cellsize %lfx%lfx%lf\n", this_node,  dd.cell_size[0], dd.cell_size[1], dd.cell_size[2]);
-
-
-  CELL_TRACE(fprintf(stderr, "%d: dd_on_geometry_change: max_range = %f, min_cell_size = %f, max_skin = %f\n", this_node, max_range, min_cell_size, max_skin));
-  
-  if (max_range > min_cell_size) {
-    /* if new box length leads to too small cells, redo cell structure
-       using smaller number of cells. */
-    cells_re_init(CELL_STRUCTURE_DOMDEC);
-    return;
-  }
-
-  /* If we are not in a hurry, check if we can maybe optimize the cell
-     system by using smaller cells. */
-  if (!(flags & CELL_FLAG_FAST)) {
-    int i;
-    for(i=0; i<3; i++) {
-      int poss_size = (int)floor(box_l[i]/max_range);
-      if (poss_size > grid_size[i])
-	break;
-    }
-    if (i < 3) {
-      /* new range/box length allow smaller cells, redo cell structure,
-	 possibly using smaller number of cells. */
-      cells_re_init(CELL_STRUCTURE_DOMDEC);
-      return;
-    }
-  }
+  cells_re_init(CELL_STRUCTURE_CURRENT);
 }
 //--------------------------------------------------------------------------------------------------
 void dd_p4est_write_particle_vtk(char *filename) {
@@ -1612,7 +1601,7 @@ void
 p4est_dd_repartition(const std::string& desc, bool debug)
 {
   if (desc == "statistics") {
-      repart::print_cell_info("!>>> Statistics", "none");
+    repart::print_cell_info("!>>> Statistics", "none");
     return;
   }
 
