@@ -30,6 +30,7 @@
 #include "maggs.hpp"
 #include "forces_inline.hpp"
 #include "electrokinetics.hpp"
+#include "utils/Timer.hpp"
 
 #include <cassert>
 ActorList forceActors;
@@ -121,9 +122,16 @@ void check_forces()
 
 void force_calc()
 {
+  auto& timer_compl = Utils::Timing::Timer::get_timer("force_calc");
+  auto& timer1 = Utils::Timing::Timer::get_timer("force_calc-cells_update_ghosts");
+  timer_compl.start();
+  timer1.start();
   // Communication step: distribute ghost positions
   cells_update_ghosts();
+  timer1.stop();
 
+  auto& timer2 = Utils::Timing::Timer::get_timer("force_calc-misc");
+  timer2.start();
   // VIRTUAL_SITES pos (and vel for DPD) update for security reason !!!
 #ifdef VIRTUAL_SITES
   update_mol_vel_pos();
@@ -171,7 +179,10 @@ espressoSystemInterface.update();
   }
 
   calc_long_range_forces();
+  timer2.stop();
 
+  auto& timer3 = Utils::Timing::Timer::get_timer("force_calc-short_range_forces");
+  timer3.start();
   switch (cell_structure.type) {
   case CELL_STRUCTURE_LAYERED:
     layered_calculate_ia();
@@ -190,6 +201,7 @@ espressoSystemInterface.update();
     nsq_calculate_ia();
 
   }
+  timer3.start();
 
 #ifdef OIF_GLOBAL_FORCES
     double area_volume[2]; //There are two global quantities that need to be evaluated: object's surface and object's volume. One can add another quantity.
@@ -231,8 +243,11 @@ espressoSystemInterface.update();
   distribute_mol_force();
 #endif
 
+  auto& timer4 = Utils::Timing::Timer::get_timer("force_calc-force_reduction");
+  timer4.start();
   // Communication Step: ghost forces
   ghost_communicator(&cell_structure.collect_ghost_force_comm);
+  timer4.stop();
 
   // apply trap forces to trapped molecules
 #ifdef MOLFORCES
@@ -247,6 +262,7 @@ espressoSystemInterface.update();
   // mark that forces are now up-to-date
   recalc_forces = 0;
 
+  timer_compl.stop();
 }
 
 void calc_long_range_forces()
