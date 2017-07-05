@@ -1530,6 +1530,10 @@ p4est_dd_repart_calc_nquads(const std::vector<double>& metric, bool debug)
 void
 p4est_dd_repartition(const std::string& desc, bool debug)
 {
+  auto& timer_compl = Utils::Timing::Timer::get_timer("dd_p4est_repartition");
+  auto& timer1 = Utils::Timing::Timer::get_timer("dd_p4est_repartition-metric_eval");
+  timer_compl.start();
+  timer1.start();
   if (desc == "statistics") {
     repart::print_cell_info("!>>> Statistics", "none");
     return;
@@ -1538,9 +1542,14 @@ p4est_dd_repartition(const std::string& desc, bool debug)
   std::vector<double> weights = repart::metric{desc}();
   p4est_dd_repart_calc_nquads(weights, debug);
 
+  timer1.stop();
+  auto& timer2 = Utils::Timing::Timer::get_timer("dd_p4est_repartition-cells_re_init");
+  timer2.start();
   repart::print_cell_info("!>>> Before Repart", desc);
   cells_re_init(CELL_STRUCTURE_CURRENT, true);
   repart::print_cell_info("!>>> After Repart", desc);
+  timer2.stop();
+  timer_compl.stop();
 }
 
 #endif

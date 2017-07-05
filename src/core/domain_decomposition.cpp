@@ -35,6 +35,7 @@
 #include "constraint.hpp"
 #include "initialize.hpp"
 #include "external_potential.hpp"
+#include "utils/Timer.hpp"
 
 #include "call_trace.hpp"
 
@@ -1020,6 +1021,10 @@ void dd_topology_init(CellPList *old, bool isRepart) {
 #endif
 
 #ifndef P4EST_NOCHANGE
+  auto& timer1 = Utils::Timing::Timer::get_timer("dd_topology_init-migration");
+  auto& timer11 = Utils::Timing::Timer::get_timer("dd_topology_init-migration-resort");
+  timer1.start();
+  timer11.start();
   // Go through all old particles and find owner & cell
   for (c = 0; c < old->n; c++) {
     part = old->cell[c]->part;
@@ -1039,11 +1044,16 @@ void dd_topology_init(CellPList *old, bool isRepart) {
   for(c=0; c<local_cells.n; c++) {
     update_local_particles(local_cells.cell[c]);
   }
+  timer11.stop();
+  auto& timer12 = Utils::Timing::Timer::get_timer("dd_topology_init-migration-exchange");
+  timer12.start();
   // Invoke global communication for cell[0] containing particles of other processes
   if (local_cells.n > 0)
     dd_p4est_global_exchange_part(local_cells.cell[0]);
   else // Call it anyway in case there are no cells on this node (happens during startup)
     dd_p4est_global_exchange_part(NULL);
+  timer12.stop();
+  timer1.stop();
 #else
   /* copy particles */
   for (c = 0; c < old->n; c++) {
@@ -1357,6 +1367,8 @@ int calc_processor_min_num_cells () {
 }
 
 void calc_link_cell() {
+  auto& timer_compl = Utils::Timing::Timer::get_timer("calc_link_cell");
+  timer_compl.start();
   CALL_TRACE();
 
   int c, np1, n, np2, i ,j, j_start;
@@ -1402,6 +1414,7 @@ void calc_link_cell() {
     }
   }
   rebuild_verletlist = 0;
+  timer_compl.stop();
 }
 
 static void __calc_link_cell_runtime(std::vector<double> ts) {

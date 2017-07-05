@@ -41,6 +41,7 @@
 #include "lees_edwards_domain_decomposition.hpp"
 #include "nsquare.hpp"
 #include "layered.hpp"
+#include "utils/Timer.hpp"
 
 #include "call_trace.hpp"
 
@@ -464,6 +465,8 @@ void check_resort_particles()
 /*************************************************/
 void cells_update_ghosts()
 {
+  auto& timer = Utils::Timing::Timer::get_timer("cells_update_ghosts");
+  timer.start();
   /* if dd.use_vList is set, it so far means we want EXACT sorting of the particles.*/
   if (dd.use_vList == 0)
     resort_particles = 1;
@@ -480,6 +483,7 @@ void cells_update_ghosts()
   else
     /* Communication step: ghost information */
     ghost_communicator(&cell_structure.update_ghost_pos_comm);
+  timer.stop();
 }
 
 /*************************************************/

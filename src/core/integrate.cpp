@@ -63,6 +63,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mpi.h>
+#include "utils/Timer.hpp"
 
 #ifdef VALGRIND_INSTRUMENTATION
 #include <callgrind.h>
@@ -228,6 +229,8 @@ void integrate_ensemble_init() {
 /************************************************************/
 
 void integrate_vv(int n_steps, int reuse_forces) {
+  auto& timer_compl = Utils::Timing::Timer::get_timer("integrate_vv-nsteps");
+  timer_compl.start();
   /* Prepare the Integrator */
   on_integration_start();
 #ifdef IMMERSED_BOUNDARY
@@ -380,6 +383,8 @@ void integrate_vv(int n_steps, int reuse_forces) {
 
   /* Integration loop */
   for (int step = 0; step < n_steps; step++) {
+    auto& timer_inner = Utils::Timing::Timer::get_timer("integrate_vv-1step");
+    timer_inner.start();
     INTEG_TRACE(fprintf(stderr, "%d: STEP %d\n", this_node, step));
 
 #ifdef BOND_CONSTRAINT
@@ -612,6 +617,7 @@ void integrate_vv(int n_steps, int reuse_forces) {
 #ifdef COLLISION_DETECTION
     handle_collisions();
 #endif
+    timer_inner.stop();
   }
 
 #ifdef VALGRIND_INSTRUMENTATION
@@ -640,6 +646,7 @@ void integrate_vv(int n_steps, int reuse_forces) {
   if (thermo_switch & THERMO_GHMC)
     ghmc_close();
 #endif
+  timer_compl.stop();
 }
 
 /************************************************************/
