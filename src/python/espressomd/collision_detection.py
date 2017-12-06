@@ -90,7 +90,7 @@ class CollisionDetection(ScriptInterfaceHelper):
             raise Exception("Collision mode must be specified via the mode keyword argument")
         
         # Completeness of parameter set
-        if not (set(kwargs.keys()) == set(self._params_for_mode(kwargs["mode"]))):
+        if not (set(self._params_for_mode(kwargs["mode"])) <= set(kwargs.keys())):
             raise Exception("Parameter set does not match mode. ",kwargs["mode"],"requries ",self._params_for_mode(kwargs["mode"]))
 
         # Mode

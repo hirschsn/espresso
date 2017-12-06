@@ -49,14 +49,16 @@ public:
       {"part_type_vs",collision_params.vs_particle_type},
       {"part_type_to_be_glued",collision_params.part_type_to_be_glued},
       {"part_type_to_attach_vs_to",collision_params.part_type_to_attach_vs_to},
-      {"part_type_after_glueing",collision_params.part_type_after_glueing}
+      {"part_type_after_glueing",collision_params.part_type_after_glueing},
+      {"collision_probability",collision_params.collision_probability},
+      {"ignore_time",collision_params.ignore_time}
     });
   };
   Variant call_method(const std::string& name, const VariantMap& params) override {
       if (name == "validate") {
           return validate_collision_parameters();
       };
-    return nullptr;
+    return false;
   };
   const std::string name() const override { return "CollisionDetection::CollisionDetection"; };
 };

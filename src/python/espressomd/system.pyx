@@ -116,7 +116,7 @@ cdef class System(object):
                 self.lbboundaries = LBBoundaries()
                 self.ekboundaries = EKBoundaries()
             IF COLLISION_DETECTION==1:
-                self.collision_detection = CollisionDetection()
+                self.collision_detection = CollisionDetection(mode="off")
             IF CUDA:
                 self.cuda_init_handle = cuda_init.CudaInitHandle()
 

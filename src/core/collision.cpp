@@ -28,6 +28,8 @@
 #include "interaction_data.hpp" 
 #include "initialize.hpp"
 #include "rotation.hpp"
+#include <deque>
+#include "random.hpp" 
 
 
 
@@ -46,6 +48,35 @@ typedef struct {
   int pp2; // 2nd particle id
 } collision_struct;
 
+
+typedef struct {
+  double remove_time;
+  int pp1;
+  int pp2;
+} ignore_pair_struct;
+
+std::deque<ignore_pair_struct> ignore_queue;
+
+void queue_ignore_pair(double forget_at, int pp1, int pp2) {
+  ignore_pair_struct i ={forget_at,pp1,pp2};
+  ignore_queue.emplace_back(i);
+}
+
+void remove_outdated_from_ignore_queue() {
+  if (ignore_queue.empty()) return;
+
+  while (ignore_queue[0].remove_time<sim_time) {
+    ignore_queue.pop_front();
+  }
+}
+
+bool pair_in_ignore_queue(int pp1,int pp2) {
+  return std::any_of(ignore_queue.begin(),ignore_queue.end(),
+     [&pp1,&pp2](ignore_pair_struct &i) {
+       return ((pp1 == i.pp1 && pp2 == i.pp2) || ((pp1 == i.pp2) && (pp2 == i.pp1)));
+     });
+}
+
 // During force calculation, colliding particles are recorded in the queue
 // The queue is processed after force calculation, when it is save to add
 // particles
@@ -53,7 +84,22 @@ static std::vector<collision_struct> local_collision_queue;
 
 
 /// Parameters for collision detection
-Collision_parameters collision_params = { 0, };
+Collision_parameters collision_params = 
+    { 0, // bond centers
+      0, // bond vs
+      0, // vs_particle_type
+      0, // mode
+      false, // exception on collision
+      0.0, // distnace
+      0, // dist_glued_particle_to_vs
+      0, // part type to be glued
+      0, // part type to attach vs to
+      0, /// part type after glueing
+      0, // bond three particles
+      0, // tpb angle res
+      0.0, // vs placement
+      1.0, // collision probability
+      0.0}; // ignore time
 
 
 /** @brief Return true if a bond between the centers of the colliding particles needs to be placed. At this point, all modes need this */
@@ -79,6 +125,24 @@ bool validate_collision_parameters()
     }
   }
 
+
+  if (collision_params.collision_probability<1 && n_nodes>1) {
+    runtimeErrorMsg() << "Collision probability <1 only works on a single node";
+  }
+  if (collision_params.collision_probability<1 && collision_params.mode== COLLISION_MODE_BIND_THREE_PARTICLES) {
+    runtimeErrorMsg() << "Collision probability <1 does not work with three particle binding.";
+    return false;
+  }
+
+  if (!(collision_params.collision_probability>0 && collision_params.collision_probability<=1.0+1E-10)) {
+    runtimeErrorMsg() << "Collision probability has to be >0 and <=1" <<collision_params.collision_probability; 
+    return false;
+  }
+
+  if (collision_params.ignore_time <0) {
+    runtimeErrorMsg() << "Ignore time has to be >=0"; 
+    return false;
+  }
 
 
 #ifndef VIRTUAL_SITES_RELATIVE
@@ -198,6 +262,7 @@ bool validate_collision_parameters()
 //* Allocate memory for the collision queue /
 void prepare_local_collision_queue()
 {
+  remove_outdated_from_ignore_queue();
   local_collision_queue.clear();
 }
 
@@ -579,6 +644,31 @@ void three_particle_binding_domain_decomposition(const std::vector<collision_str
 // Handle the collisions stored in the queue
 void handle_collisions ()
 {
+  // Remove ignored pairs from the collision queue
+  if (collision_params.collision_probability <1) {
+    local_collision_queue.erase(std::remove_if(
+      local_collision_queue.begin(), local_collision_queue.end(),
+      [](collision_struct &c) {
+        return pair_in_ignore_queue(c.pp1,c.pp2);
+      }), local_collision_queue.end());
+
+  // Test for collision probability. Remove collisions which fail the random criterion
+  // and queue them in the ignore_pair_queue
+  local_collision_queue.erase(std::remove_if(
+      local_collision_queue.begin(), local_collision_queue.end(),
+      [](collision_struct &c) {
+       if (d_random() >= collision_params.collision_probability) {
+         if (collision_params.ignore_time>0) {
+           queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
+         }
+         return true;
+       } 
+       else
+         return false;
+      }),local_collision_queue.end());
+  }
+
+
 
   if (collision_params.exception_on_collision) {
     for (auto& c : local_collision_queue) {

@@ -82,6 +82,10 @@ typedef struct {
   int three_particle_angle_resolution;
   /** Placement of virtual sites for MODE_VS. 0=on same particle as related to, 1=on collision partner. 0.5=in the middle between */
   double vs_placement;
+  /** Probability for binding two colliding particles */
+  double collision_probability;
+  /** Time to ignore a pair after considering it for a collision */
+  double ignore_time;
 } Collision_parameters;
 
 /// Parameters for collision detection
