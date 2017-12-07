@@ -29,6 +29,7 @@
 #include "accumulators/initialize.hpp"
 #include "correlators/initialize.hpp" 
 #include "lbboundaries/initialize.hpp"
+#include "mpiio/initialize.hpp"
 
 #include "ComFixed.hpp"
 
@@ -51,6 +52,7 @@ void initialize() {
   Observables::initialize();
   Correlators::initialize();
   LBBoundaries::initialize();
+  MPIIO::initialize();
 
   ScriptInterface::register_new<Testing::VariantTester>("Testing::VariantTester");
   ScriptInterface::register_new<ComFixed>();

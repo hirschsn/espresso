@@ -48,6 +48,7 @@ if LB_BOUNDARIES or LB_BOUNDARIES_GPU:
 from .ekboundaries import EKBoundaries
 from .comfixed import ComFixed
 from espressomd.utils import array_locked
+from .io.mpiio import Mpiio
 
 import sys
 import random  # for true random numbers from os.urandom()
@@ -83,6 +84,7 @@ cdef class System(object):
         auto_update_observables
         auto_update_correlators
         auto_update_accumulators
+        mpiio
         constraints
         lbboundaries
         ekboundaries
@@ -106,6 +108,7 @@ cdef class System(object):
             self.auto_update_observables = AutoUpdateObservables()
             self.auto_update_correlators = AutoUpdateCorrelators()
             self.auto_update_accumulators = AutoUpdateAccumulators()
+            self.mpiio = Mpiio()
             if CONSTRAINTS:
                 self.constraints = Constraints()
             if LB_BOUNDARIES or LB_BOUNDARIES_GPU:
