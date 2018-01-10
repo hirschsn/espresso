@@ -1,9 +1,9 @@
-from .script_interface import ScriptInterfaceHelper
+from .script_interface import ScriptInterfaceHelper,script_interface_register
 from .utils import handle_errors,to_str
 from .interactions import BondedInteraction,BondedInteractions
 
 
-
+@script_interface_register
 class CollisionDetection(ScriptInterfaceHelper):
     """Inteface to the collision detection / dynamic binding.
     
@@ -26,7 +26,8 @@ class CollisionDetection(ScriptInterfaceHelper):
         # If no mode is specified at construction, use off.
         if "mode" not in kwargs:
             kwargs["mode"]="off"
-        super(type(self),self).__init__(*args,**kwargs)
+        super(type(self),self).__init__()
+        self.set_params(**kwargs)
         
 
     def validate(self):

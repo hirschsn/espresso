@@ -58,9 +58,8 @@ public:
       if (name == "validate") {
           return validate_collision_parameters();
       };
-    return false;
+    return none;
   };
-  const std::string name() const override { return "CollisionDetection::CollisionDetection"; };
 };
 
 } /* namespace CollisionDetection */
