@@ -31,13 +31,16 @@ class CollisionDetection(ut.TestCase):
     """Tests interface and functionality of the collision detection / dynamic binding"""
 
     s = espressomd.System()
+    if espressomd.has_features("VIRTUAL_SITES"): 
+        from espressomd.virtual_sites import VirtualSitesRelative
+        s.virtual_sites=VirtualSitesRelative()
 
     H = HarmonicBond(k=5000,r_0=0.1)
     H2 = HarmonicBond(k=25000,r_0=0.02)
     s.bonded_inter.add(H)
     s.bonded_inter.add(H2)
     s.time_step=0.001
-    s.cell_system.skin=0
+    s.cell_system.skin=0.05
     s.min_global_cut=0.2
 
     part_type_to_attach_vs_to=0
@@ -203,8 +206,8 @@ class CollisionDetection(ut.TestCase):
             dist_centers=np.copy(p2.pos-p1.pos)
           else:
             dist_centers=p1.pos-p2.pos
-          expected_pos=self.s.part[rel_to].pos+self.s.collision_detection.vs_placement *dist_centers
-          self.assertLess(np.sqrt(np.sum((p.pos-expected_pos)**2)),1E-5)
+          expected_pos=self.s.part[rel_to].pos_folded+self.s.collision_detection.vs_placement *dist_centers
+          np.testing.assert_allclose(np.copy(p.pos_folded),expected_pos,atol=1E-4)
     
     @ut.skipIf(not espressomd.has_features("VIRTUAL_SITES_RELATIVE"),"VIRTUAL_SITES not compiled in")
     #@ut.skipIf(s.cell_system.get_state()["n_nodes"]>1,"VS based tests only on a single node")
@@ -352,6 +355,7 @@ class CollisionDetection(ut.TestCase):
        
 
 
+    @ut.skipIf(not espressomd.has_features("VIRTUAL_SITES_RELATIVE"),"Skipped due to missing VIRTUAL_SITES_RELATIVE")
     def test_glue_to_surface(self):
         # Single collision head node
         self.run_test_glue_to_surface_for_pos(np.array((0,0,0)))
@@ -417,8 +421,15 @@ class CollisionDetection(ut.TestCase):
         
         self.s.part.add(id=4,pos=e)
         self.s.part.add(id=1,pos=b)
+        self.s.cell_system.set_domain_decomposition()
         self.s.integrator.run(0,recalc_forces=True)
         self.verify_triangle_binding(cutoff,self.s.bonded_inter[2],res)
+        self.s.cell_system.set_n_square()
+        self.s.part[:].bonds=()
+        self.s.integrator.run(0,recalc_forces=True)
+        self.verify_triangle_binding(cutoff,self.s.bonded_inter[2],res)
+
+
 
     def verify_triangle_binding(self,distance,first_bond,angle_res):
         # Gather pairs
