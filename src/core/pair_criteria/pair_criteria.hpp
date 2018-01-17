@@ -75,7 +75,7 @@ class EnergyCriterion : public PairCriterion {
 class BondCriterion : public PairCriterion {
   public: 
     bool decide(const Particle& p1, const Particle& p2) const override {
-      return bond_exists(&p1,&p2,m_bond_type) || bond_exists(&p2,&p1,m_bond_type);
+      return pair_bond_exists_on(&p1,&p2,m_bond_type) || pair_bond_exists_on(&p2,&p1,m_bond_type);
     };
     int get_bond_type() {
       return m_bond_type;
