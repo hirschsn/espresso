@@ -509,6 +509,7 @@ class CollisionDetection(ut.TestCase):
         
         self.assertEqual(expected_angle_bonds,found_angle_bonds)
             
+    @ut.skipIf(s.cell_system.get_state()["n_nodes"]>1, "skipped due to more than one node" )
     def test_zz_collision_probability(self):
         s=self.s
         s.part.clear()
