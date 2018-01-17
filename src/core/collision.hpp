@@ -19,6 +19,16 @@
 #ifndef _COLLISION_H
 #define _COLLISION_H
 
+#include "utils.hpp"
+#include "tab.hpp"
+#include <vector>
+#include "utils/linear_interpolation.hpp"
+
+
+
+//#ifndef _TAB_H
+//#define _TAB_H
+
 #define COLLISION_MODE_OFF 0
 /// just create bond between centers of colliding particles
 #define COLLISION_MODE_BOND 2
@@ -80,6 +90,8 @@ public:
   double collision_probability;
   /** Time to ignore a pair after considering it for a collision */
   double ignore_time;
+  /** Tabulated collision probability for coarsened particles */
+  TabulatedPotential distance_dependent_collsion_probability;
 };
 /// Parameters for collision detection
 extern Collision_parameters collision_params;
@@ -167,6 +179,41 @@ inline double collision_detection_cutoff() {
     return collision_params.distance;
 #endif
   return 0.;
+}
+
+/** @brief Calculate the closest possible distance between two particles
+    and the time when does it occur assuming the two are moving linearly 
+    in the direction of their velocity vectors  */
+inline std::pair<double, double> predict_min_distance_between_particles(const Particle *const p1, const Particle *const p2){
+  double dr[3], dv[3];
+  get_mi_vector(dr, p2->r.p, p1->r.p);       //get particle relative position
+  vecsub(p2->m.v, p1->m.v, dv);
+  
+  double A=sqrlen(dv);
+  double B=2.0*scalar(dr,dv);
+  double C=sqrlen(dr);
+
+  double tMin, closestDist;
+  tMin=(-B)/(2.*A);
+  closestDist=sqrt(A*pow(tMin,2)+B*tMin+C);
+  
+  return {tMin,closestDist};
+};
+
+/** @brief Check if collision between two particles will happend
+    if the two are approaching each other (in positive time)  */
+inline bool collision_prediction(const Particle *const p1, const Particle *const p2, double maxDist){
+std::pair<double,double>timeAndDist;
+double tMin, dMin;
+timeAndDist=predict_min_distance_between_particles(p1, p2);
+if (timeAndDist.second<=maxDist and timeAndDist.first>0) 
+{
+  return true;
+}
+else
+{
+  return false;
+}
 }
 
 #endif
