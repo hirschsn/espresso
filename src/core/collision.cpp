@@ -64,6 +64,7 @@ std::deque<ignore_pair_struct> ignore_queue;
 void queue_ignore_pair(double forget_at, int pp1, int pp2) {
   ignore_pair_struct i ={forget_at,pp1,pp2};
   ignore_queue.emplace_back(i);
+ // printf("Que ignore pair: %f %d %d\n",forget_at,pp1,pp2);
 }
 
 void remove_outdated_from_ignore_queue() {
@@ -71,6 +72,7 @@ void remove_outdated_from_ignore_queue() {
 
   while (ignore_queue[0].remove_time<sim_time) {
     ignore_queue.pop_front();
+    if (ignore_queue.empty()) return;
   }
 }
 
@@ -268,6 +270,7 @@ bool validate_collision_parameters() {
 
   recalc_forces = 1;
   rebuild_verletlist = 1;
+  ignore_queue.clear();
 
   return true;
 }
@@ -666,7 +669,11 @@ void handle_collisions ()
     local_collision_queue.erase(std::remove_if(
       local_collision_queue.begin(), local_collision_queue.end(),
       [](collision_struct &c) {
-        return pair_in_ignore_queue(c.pp1,c.pp2);
+        bool res= pair_in_ignore_queue(c.pp1,c.pp2);
+        if (res) {
+           //printf("Ignoring %d %d\n",c.pp1,c.pp2);
+        }
+        return res;
       }), local_collision_queue.end());
 
   // Test for collision probability. Remove collisions which fail the random criterion
@@ -701,6 +708,7 @@ void handle_collisions ()
       if (local_particles[c.pp1]->l.ghost) {
         std::swap(c.pp1, c.pp2);
       }
+      //printf("Binding %d %d\n",c.pp1,c.pp2);
       int bondG[2];
       bondG[0] = collision_params.bond_centers;
       bondG[1] = c.pp2;
