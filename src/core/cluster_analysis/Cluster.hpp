@@ -29,6 +29,8 @@ class Cluster {
     Vector3d center_of_mass();
     /** @brief Longest distance between any combination of two particles */
     double longest_distance();
+    /** @brief Calculate maximum radius of a particle from the ccluster's center of mass */
+    double maximum_radius(); 
     /** @brief Calculate radius of gyration of the cluster */
     double radius_of_gyration();
     double radius_of_gyration_subcluster(std::vector<int> &subcl_particle_ids);

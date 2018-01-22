@@ -49,7 +49,9 @@ public:
       : mode(COLLISION_MODE_OFF), distance(0.), bond_centers(-1), bond_vs(-1),
         bond_three_particles(-1),
         collision_probability(1.),
-        ignore_time(0.) {};
+        ignore_time(0.)
+        //, distance_dependent_collsion_probability 
+        {};
 
   /// collision handling mode, a combination of constants COLLISION_MODE_*
   int mode;
@@ -91,7 +93,8 @@ public:
   /** Time to ignore a pair after considering it for a collision */
   double ignore_time;
   /** Tabulated collision probability for coarsened particles */
-  TabulatedPotential distance_dependent_collsion_probability;
+  std::vector<double> collsion_probability_per_shell;
+  
 };
 /// Parameters for collision detection
 extern Collision_parameters collision_params;
@@ -199,6 +202,9 @@ inline std::pair<double, double> predict_min_distance_between_particles(const Pa
   
   return {tMin,closestDist};
 };
+
+/** @brief Calculate the interpolated values for the collision probability as function of the distance to the center of mass */
+
 
 /** @brief Check if collision between two particles will happend
     if the two are approaching each other (in positive time)  */

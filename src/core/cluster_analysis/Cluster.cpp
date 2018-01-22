@@ -68,6 +68,18 @@ double Cluster::longest_distance() {
   return ld;
 }
 
+double Cluster::maximum_radius(){
+  double rMax=0.;
+  Vector3d com=center_of_mass_subcluster(particles);
+  for (auto a=particles.begin();a!=particles.end();a++) {
+    double dist[3];
+    get_mi_vector(dist, partCfg()[*a].r.p,com);
+    if(sqrt(sqrlen(dist))>rMax) {
+      rMax=sqrt(sqrlen(dist));
+    }
+  }
+  return rMax;
+}
 
 //Radius of gyration
 double Cluster::radius_of_gyration() {
