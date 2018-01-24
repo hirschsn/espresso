@@ -731,11 +731,11 @@ void handle_collisions ()
 
   // Test for precomputed distance dependent collision probabilities. Remove collisions which tht are within tMin fro particles that are closer than the distMin
   // and queue them in the ignore_pair_queue
-  local_collision_queue.erase(std::remove_if(
+       if (collision_params.collision_probability_vs_distance.size()>0 and (collision_params.probability_dist_max-collision_params.probability_dist_min > std::numeric_limits<double>::epsilon())) { 
+  
+      local_collision_queue.erase(std::remove_if(
       local_collision_queue.begin(), local_collision_queue.end(),
       [](collision_struct &c) {
-       if (collision_params.collision_probability_vs_distance.size()>0 and (collision_params.probability_dist_max-collision_params.probability_dist_min > 1e-3)) { 
-
 
          double xCurrentVec[3];
          get_mi_vector(xCurrentVec, local_particles[c.pp1]->r.p, local_particles[c.pp2]->r.p);
@@ -750,20 +750,17 @@ void handle_collisions ()
          double tMin=timeAndDist.first;
          double distMin=timeAndDist.second;
     
-
-         if (timeAndDist.first>0 and d_random()>=interpolatedProbability) {
+         if (timeAndDist.first<0){
            queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
+           return true;
+         }         
+         if (d_random()>=interpolatedProbability) {
+           queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
+           return true;
          }
-         return true;
-       }
-       else
-         return false;
-      }),local_collision_queue.end());
-
-
-
-
-  }
+       }), local_collision_queue.end());
+    }
+}
 
 
 
