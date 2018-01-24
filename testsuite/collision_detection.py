@@ -528,6 +528,27 @@ class CollisionDetection(ut.TestCase):
         self.assertAlmostEqual(float(bonds)/n,0.5,delta=0.1)
                 
 
+    def test_tabulated_collision_probability(self):
+        s=self.s
+        s.part.clear()
+        n=1000
+        dx=s.box_l[0]/(n+1)
+        tabProb=np.arange(1,0,0.25)        
+        for i in range(n):
+            s.part.add(id=2*i,pos=(dx*i,0,0))
+            s.part.add(id=2*i+1,pos=(dx*(i+0.2),0,0))
+        self.s.collision_detection.set_params(mode="bind_centers",distance=0.25*dx,bond_centers=self.H,collision_probability_vs_distance=tabProb, probability_dist_min=1, probability_dist_max=4)
+        s.integrator.run(0,recalc_forces=True)
+        bonds=0
+        for p in s.part:
+            if len(p.bonds)>0:
+                bonds+=1
+        print(bonds)
+        print(" params for collision_detection: ")
+        print(self.s.collision_detection.get_params())
+        self.assertAlmostEqual(float(bonds)/n,0.5,delta=0.1)
+                
+
 
 
 
