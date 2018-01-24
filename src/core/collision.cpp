@@ -713,7 +713,7 @@ void handle_collisions ()
         }
         return res;
       }), local_collision_queue.end());
-
+   }
   // Test for collision probability. Remove collisions which fail the random criterion
   // and queue them in the ignore_pair_queue
   local_collision_queue.erase(std::remove_if(
@@ -754,13 +754,14 @@ void handle_collisions ()
            queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
            return true;
          }         
+         printf("Current dist and probability, : %f %f %f\n",xCurrent,interpolatedProbability,d_random());      
          if (d_random()>=interpolatedProbability) {
            queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
            return true;
          }
+         return false;
        }), local_collision_queue.end());
     }
-}
 
 
 
