@@ -23,8 +23,6 @@
 #include "tab.hpp"
 #include <vector>
 #include "utils/linear_interpolation.hpp"
-#include "TabulatedCollisionProbability.hpp"
-
 
 //#ifndef _TAB_H
 //#define _TAB_H
@@ -187,47 +185,6 @@ inline double collision_detection_cutoff() {
     return collision_params.distance;
 #endif
   return 0.;
-}
-
-/** @brief Calculate the closest possible distance between two particles
-    and the time when does it occur assuming the two are moving linearly 
-    along their velocity vectors  */
-inline std::pair<double, double> predict_min_distance_between_particles(const Particle *const p1, const Particle *const p2){
-  double dr[3], dv[3];
-  get_mi_vector(dr, p2->r.p, p1->r.p);       //get particles relative position
-  vecsub(p2->m.v, p1->m.v, dv);              //get particles relative velocity
-  
-  double A=sqrlen(dv);
-  double B=2.0*scalar(dr,dv);
-  double C=sqrlen(dr);
-
-  double tMin, closestDist;
-  tMin=(-B)/(2.*A);
-  closestDist=sqrt(A*pow(tMin,2)+B*tMin+C);
-  
-  return {tMin,closestDist};
-}
-
-
-
-/** @brief Interpolate collision probability value between xMin and xMax for the given x-distance from the cluster's center of mass */
-double interpolate_collision_probability(double); 
-
-
-/** @brief Check if collision between two particles will happen,
-    if the two are approaching each other (positive time)  */
-inline bool collision_prediction(const Particle *const p1, const Particle *const p2){
-  std::pair<double,double>timeAndDist;
-  timeAndDist=predict_min_distance_between_particles(p1, p2);
-
-  if (timeAndDist.second<=collision_params.distance and timeAndDist.first>0) 
-  {
-    return true;
-  }
-  else
-  {
-    return false;
-  }
 }
 
 #endif

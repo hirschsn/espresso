@@ -661,9 +661,39 @@ void three_particle_binding_domain_decomposition(
   } // Loop over total collisions
 }
 
-// Interpolate probability value at the given x distance from the cluster's center of mass
+
+/** @brief Calculate the closest possible distance between two particles
+    and the time when does it occur assuming the two are moving linearly 
+    along their velocity vectors  */
+inline std::pair<double, double> predict_min_distance_between_particles(const Particle *const p1, const Particle *const p2){
+  double dr[3], dv[3];
+  get_mi_vector(dr, p2->r.p, p1->r.p);       //get particles relative position
+  vecsub(p2->m.v, p1->m.v, dv);              //get particles relative velocity
+  
+  double A=sqrlen(dv);
+  double B=2.0*scalar(dr,dv);
+  double C=sqrlen(dr);
+
+  double tMin=(-B)/(2.*A);
+  double closestDist=sqrt(A*pow(tMin,2)+B*tMin+C);
+  
+  return {tMin,closestDist};
+}
+
+
+/** @brief Check if collision between two particles will happen,
+    if the two are approaching each other (positive time)  */
+inline bool collision_prediction(const Particle *const p1, const Particle *const p2){
+  std::pair<double,double>timeAndDist;
+  timeAndDist=predict_min_distance_between_particles(p1, p2);
+
+  return (timeAndDist.second <= collision_params.distance and timeAndDist.first > 0); 
+}
+
+
+/** @brief Interpolate collision probability value between xMin and xMax for the given x-distance from the cluster's center of mass */
 double interpolate_collision_probability(double x) {
-  double invstepsize=0.0;
+  double invstepsize=(collision_params.collision_probability_vs_distance.size()-1)/(collision_params.probability_dist_max-collision_params.probability_dist_min);
   assert(x<=collision_params.probability_dist_max);
   return Utils::linear_interpolation(collision_params.collision_probability_vs_distance, invstepsize, collision_params.probability_dist_min, x);
 } 
@@ -672,26 +702,6 @@ double interpolate_collision_probability(double x) {
 // Handle the collisions stored in the queue
 void handle_collisions ()
 {
-  // Check if collision probability table is not of 0 length, 
-  // interpolate for the exact value for the x-radial distance from the centr of mass
-  if (collision_params.collision_probability_vs_distance.size()>0) {
-  // do interpolate for current distance
-  
-  collision_struct c;
-  //Particle *const p1 = local_particles[c.pp1];
-  //Particle *const p2 = local_particles[c.pp2];
-
-  // If p1 and p2 are not closer or equal to the cutoff distance, skip
-  // p1:
-  double xCurrentVec[3];
-  get_mi_vector(xCurrentVec, local_particles[c.pp1]->r.p, local_particles[c.pp2]->r.p);
-  double xCurrent;
-  xCurrent= sqrt(sqrlen(xCurrentVec));
-  double interpolatedProbability;
-  interpolatedProbability=interpolate_collision_probability(xCurrent);
-  collision_params.collision_probability=interpolatedProbability;
-  } 
-
   // Remove ignored pairs from the collision queue
   if (collision_params.collision_probability <1) {
     local_collision_queue.erase(std::remove_if(
@@ -718,6 +728,41 @@ void handle_collisions ()
        else
          return false;
       }),local_collision_queue.end());
+
+  // Test for precomputed distance dependent collision probabilities. Remove collisions which tht are within tMin fro particles that are closer than the distMin
+  // and queue them in the ignore_pair_queue
+  local_collision_queue.erase(std::remove_if(
+      local_collision_queue.begin(), local_collision_queue.end(),
+      [](collision_struct &c) {
+       if (collision_params.collision_probability_vs_distance.size()>0 and (collision_params.probability_dist_max-collision_params.probability_dist_min > 1e-3)) { 
+
+
+         double xCurrentVec[3];
+         get_mi_vector(xCurrentVec, local_particles[c.pp1]->r.p, local_particles[c.pp2]->r.p);
+         double xCurrent= sqrt(sqrlen(xCurrentVec));
+         double interpolatedProbability=interpolate_collision_probability(xCurrent);
+         // at current distance between particles pp1 and pp2, xCurrent, interpolated tabulated collision probability is interpolatedProbability
+
+         Particle *const p1 = local_particles[c.pp1];
+         Particle *const p2 = local_particles[c.pp2];
+         std::pair<double,double>timeAndDist;
+         timeAndDist=predict_min_distance_between_particles(p1, p2);
+         double tMin=timeAndDist.first;
+         double distMin=timeAndDist.second;
+    
+
+         if (timeAndDist.first>0 and d_random()>=interpolatedProbability) {
+           queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
+         }
+         return true;
+       }
+       else
+         return false;
+      }),local_collision_queue.end());
+
+
+
+
   }
 
 
