@@ -50,7 +50,8 @@ public:
         bond_three_particles(-1),
         collision_probability(1.),
         ignore_time(0.),
-        collision_probability_distance_dependent 
+        probability_dist_min(0),
+        probability_dist_max(0)
         {};
 
   /// collision handling mode, a combination of constants COLLISION_MODE_*
@@ -93,11 +94,11 @@ public:
   /** Time to ignore a pair after considering it for a collision */
   double ignore_time;
   /** Precalculated collision probabilities (per shell) for coarsened particles */
-  std::vector<double> collision_probability_distance_dependent;
-  /** Interpolatet collision probability for coarsened particles */
-  std::vector<double> collision_probability_interpolated;
-
-  
+  std::vector<double> collision_probability_vs_distance;
+  /** Minimum distance for probability interpolation */
+  double probability_dist_min;
+  /** Maximum distance for probability interpolation */
+  double probability_dist_max;
 };
 /// Parameters for collision detection
 extern Collision_parameters collision_params;
@@ -204,10 +205,8 @@ inline std::pair<double, double> predict_min_distance_between_particles(const Pa
   closestDist=sqrt(A*pow(tMin,2)+B*tMin+C);
   
   return {tMin,closestDist};
-};
+}
 
-/** @brief Interpolate given values for the collision probability as function of the distance to the center of mass */
-inline std::vector<std::pair<double, double>> interpolate_collision_probability() 
 
 
 

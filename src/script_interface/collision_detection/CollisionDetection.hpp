@@ -52,7 +52,9 @@ public:
       {"part_type_after_glueing",collision_params.part_type_after_glueing},
       {"collision_probability",collision_params.collision_probability},
       {"ignore_time",collision_params.ignore_time},
-      {"collision_probability_per_shell",collision_params.collision_probability_per_shell}
+      {"collision_probability_vs_distance",collision_params.collision_probability_vs_distance},
+      {"probability_dist_min",collision_params.probability_dist_min},
+      {"probability_dist_max",collision_params.probability_dist_max}
     });
   };
   Variant call_method(const std::string& name, const VariantMap& params) override {

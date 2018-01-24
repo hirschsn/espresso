@@ -10,13 +10,6 @@ cdef extern from "collision.hpp":
     const int COLLISION_MODE_GLUE_TO_SURF  
     const int COLLISION_MODE_BIND_THREE_PARTICLES  
     
-cdef extern from "TabulatedCollisionProbability.hpp":
-    struct TabulatedCollisionProbability:
-        double maxval
-        double minval
-        vector[double] collision_probability_tab
-
-
 
 @script_interface_register
 class CollisionDetection(ScriptInterfaceHelper):
