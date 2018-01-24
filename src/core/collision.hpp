@@ -126,6 +126,7 @@ void prepare_local_collision_queue();
 /// Handle the collisions recorded in the queue
 void handle_collisions();
 
+
 /** @brief Validates collision parameters and creates particle types if needed
  */
 bool validate_collision_parameters();
@@ -208,6 +209,9 @@ inline std::pair<double, double> predict_min_distance_between_particles(const Pa
 }
 
 
+
+/** @brief Interpolate collision probability value between xMin and xMax for the given x-distance from the cluster's center of mass */
+double interpolate_collision_probability(double); 
 
 
 /** @brief Check if collision between two particles will happen,

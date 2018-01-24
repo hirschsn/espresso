@@ -661,9 +661,37 @@ void three_particle_binding_domain_decomposition(
   } // Loop over total collisions
 }
 
+// Interpolate probability value at the given x distance from the cluster's center of mass
+double interpolate_collision_probability(double x) {
+  double invstepsize=0.0;
+  assert(x<=collision_params.probability_dist_max);
+  return Utils::linear_interpolation(collision_params.collision_probability_vs_distance, invstepsize, collision_params.probability_dist_min, x);
+} 
+
+
 // Handle the collisions stored in the queue
 void handle_collisions ()
 {
+  // Check if collision probability table is not of 0 length, 
+  // interpolate for the exact value for the x-radial distance from the centr of mass
+  if (collision_params.collision_probability_vs_distance.size()>0) {
+  // do interpolate for current distance
+  
+  collision_struct c;
+  //Particle *const p1 = local_particles[c.pp1];
+  //Particle *const p2 = local_particles[c.pp2];
+
+  // If p1 and p2 are not closer or equal to the cutoff distance, skip
+  // p1:
+  double xCurrentVec[3];
+  get_mi_vector(xCurrentVec, local_particles[c.pp1]->r.p, local_particles[c.pp2]->r.p);
+  double xCurrent;
+  xCurrent= sqrt(sqrlen(xCurrentVec));
+  double interpolatedProbability;
+  interpolatedProbability=interpolate_collision_probability(xCurrent);
+  collision_params.collision_probability=interpolatedProbability;
+  } 
+
   // Remove ignored pairs from the collision queue
   if (collision_params.collision_probability <1) {
     local_collision_queue.erase(std::remove_if(
