@@ -23,7 +23,7 @@
 #include "tab.hpp"
 #include <vector>
 #include "utils/linear_interpolation.hpp"
-
+#include "TabulatedCollisionProbability.hpp"
 
 
 //#ifndef _TAB_H
@@ -49,8 +49,8 @@ public:
       : mode(COLLISION_MODE_OFF), distance(0.), bond_centers(-1), bond_vs(-1),
         bond_three_particles(-1),
         collision_probability(1.),
-        ignore_time(0.)
-        //, distance_dependent_collsion_probability 
+        ignore_time(0.),
+        collision_probability_distance_dependent 
         {};
 
   /// collision handling mode, a combination of constants COLLISION_MODE_*
@@ -92,8 +92,11 @@ public:
   double collision_probability;
   /** Time to ignore a pair after considering it for a collision */
   double ignore_time;
-  /** Tabulated collision probability for coarsened particles */
-  std::vector<double> collsion_probability_per_shell;
+  /** Precalculated collision probabilities (per shell) for coarsened particles */
+  std::vector<double> collision_probability_distance_dependent;
+  /** Interpolatet collision probability for coarsened particles */
+  std::vector<double> collision_probability_interpolated;
+
   
 };
 /// Parameters for collision detection
@@ -186,11 +189,11 @@ inline double collision_detection_cutoff() {
 
 /** @brief Calculate the closest possible distance between two particles
     and the time when does it occur assuming the two are moving linearly 
-    in the direction of their velocity vectors  */
+    along their velocity vectors  */
 inline std::pair<double, double> predict_min_distance_between_particles(const Particle *const p1, const Particle *const p2){
   double dr[3], dv[3];
-  get_mi_vector(dr, p2->r.p, p1->r.p);       //get particle relative position
-  vecsub(p2->m.v, p1->m.v, dv);
+  get_mi_vector(dr, p2->r.p, p1->r.p);       //get particles relative position
+  vecsub(p2->m.v, p1->m.v, dv);              //get particles relative velocity
   
   double A=sqrlen(dv);
   double B=2.0*scalar(dr,dv);
@@ -203,23 +206,25 @@ inline std::pair<double, double> predict_min_distance_between_particles(const Pa
   return {tMin,closestDist};
 };
 
-/** @brief Calculate the interpolated values for the collision probability as function of the distance to the center of mass */
+/** @brief Interpolate given values for the collision probability as function of the distance to the center of mass */
+inline std::vector<std::pair<double, double>> interpolate_collision_probability() 
 
 
-/** @brief Check if collision between two particles will happend
-    if the two are approaching each other (in positive time)  */
-inline bool collision_prediction(const Particle *const p1, const Particle *const p2, double maxDist){
-std::pair<double,double>timeAndDist;
-double tMin, dMin;
-timeAndDist=predict_min_distance_between_particles(p1, p2);
-if (timeAndDist.second<=maxDist and timeAndDist.first>0) 
-{
-  return true;
-}
-else
-{
-  return false;
-}
+
+/** @brief Check if collision between two particles will happen,
+    if the two are approaching each other (positive time)  */
+inline bool collision_prediction(const Particle *const p1, const Particle *const p2){
+  std::pair<double,double>timeAndDist;
+  timeAndDist=predict_min_distance_between_particles(p1, p2);
+
+  if (timeAndDist.second<=collision_params.distance and timeAndDist.first>0) 
+  {
+    return true;
+  }
+  else
+  {
+    return false;
+  }
 }
 
 #endif

@@ -51,7 +51,8 @@ public:
       {"part_type_to_attach_vs_to",collision_params.part_type_to_attach_vs_to},
       {"part_type_after_glueing",collision_params.part_type_after_glueing},
       {"collision_probability",collision_params.collision_probability},
-      {"ignore_time",collision_params.ignore_time}
+      {"ignore_time",collision_params.ignore_time},
+      {"collision_probability_per_shell",collision_params.collision_probability_per_shell}
     });
   };
   Variant call_method(const std::string& name, const VariantMap& params) override {
