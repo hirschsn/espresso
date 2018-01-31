@@ -100,6 +100,14 @@ class CollisionDetection(ScriptInterfaceHelper):
         if not ("mode" in kwargs):
             raise Exception("Collision mode must be specified via the mode keyword argument")
         
+        if not ("collision_probability" in kwargs):
+            collision_probability=1
+
+
+        if not ("collision_probability_vs_distance" in kwargs):
+            collision_probability_vs_distance=[]
+        
+        
         # Completeness of parameter set
         if not (set(self._params_for_mode(kwargs["mode"])) <= set(kwargs.keys())):
             raise Exception("Parameter set does not match mode. ",kwargs["mode"],"requries ",self._params_for_mode(kwargs["mode"]))
