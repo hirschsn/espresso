@@ -528,11 +528,23 @@ class CollisionDetection(ut.TestCase):
         print(bonds)
         self.assertAlmostEqual(float(bonds)/n,0.5,delta=0.1)
                 
+    """
+    def lagrange_interpolation(vecProb, vecDist, x):
+        n =len(vecDist)
+        lag = 0.0
+        for i in range(n): 
+            Lij = 1.0;
+            for j in range (n): 
+                if (j != i):
+                    Lij *= (x - vecDist[j])/(vecDist[i] - vecDist[j])
+            lag += Lij*vecProb[i]
+	return lag
+    """
 
     def test_tabulated_collision_probability(self):
         s=self.s
         s.part.clear()
-        n=10
+        n=1000
         dx=s.box_l[0]/(n+1)
         tabDist=np.arange(0.05*dx, dx, 0.15*dx)
         tabProb=np.arange(1.,0.0,-0.1) 
@@ -553,14 +565,7 @@ class CollisionDetection(ut.TestCase):
         
 	for p in s.part:
 	    print(p.id, p.pos) 
-	print("first colliding distance: ", dx*0.2 , " and the second: ", dx*0.3)
-	# there are (n/2)/2 pairs colliding within each chain (n=20 -> 2*5pairs)
-        # with  
 	self.s.collision_detection.set_params(mode="bind_centers",distance=0.35*dx,bond_centers=self.H,collision_probability_vs_distance=tabProb, probability_dist_min=tabDist.min(), probability_dist_max=tabDist.max())
-        #self.s.collision_detection.set_params(mode="bind_centers",distance=0.25*dx,bond_centers=self.H,collision_probability=0.5)
-	print("dist min: ", tabDist.min() , " and dist max: ", tabDist.max())
-        print("tabProb")
-        print(tabProb) 
         s.integrator.run(0,recalc_forces=True)
         bonds=0
         for p in s.part:
@@ -568,29 +573,35 @@ class CollisionDetection(ut.TestCase):
                 bonds+=1
         print("created bonds")
         print(bonds)
-        print("params for collision_detection: ")
+        bPpart=float(bonds)/n
+        print("bond per particle")
+        print(bPpart)
 
-
-        n =len(tabDist)
-        dist1=dx*0.3
-        #dist2=dx*0.3
-        lag = 0.0
+       
+        n=len(tabDist)
+        dist1=dx*0.2
+        dist2=dx*0.3
+        lag1 = lag2 = 0.0
         for i in range(n): 
             Lij = 1.0;
             for j in range (n): 
                 if (j != i):
-                    Lij *= (dist1 - tabDist[j])/(tabDist[i] - tabDist[j]);
+                    Lij *= (dist1 - tabDist[j])/(tabDist[i] - tabDist[j])
+            lag1 += Lij*tabProb[i]
+        print("lagrange interpolated value for dist1: ", dist1, lag1)
+
+        for i in range(n): 
+            Lij = 1.0;
+            for j in range (n): 
+                if (j != i):
+                    Lij *= (dist2 - tabDist[j])/(tabDist[i] - tabDist[j])
            
-            lag += Lij*tabProb[i];
-    	   
-
-        print("lagrange interpolated value for dist1: ", dist1, lag)
-
-		
+            lag2 += Lij*tabProb[i]
+        print("lagrange interpolated value for dist2: ", dist2, lag2)
+ 	
         print(self.s.collision_detection.get_params())
-        #self.assertAlmostEqual(float(bonds)/n,0.5,delta=0.1)
-                
-	
+        self.assertAlmostEqual(bPpart,(lag1+lag2)/2.,delta=0.1)
+        
 
 if __name__ == "__main__":
     ut.main()
