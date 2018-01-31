@@ -134,6 +134,7 @@ bool validate_collision_parameters() {
   }
   
   if (collision_params.collision_probability_vs_distance.size()>0 && collision_params.collision_probability<1) {
+    runtimeErrorMsg() << "collision_params.collision_probability_vs_distance.size() : "<< collision_params.collision_probability_vs_distance.size() << "and probability : "<< collision_params.collision_probability;
     runtimeErrorMsg() << "Collision probability can be either single value or a distance dependent vector. "; 
     return false;
   }
@@ -759,7 +760,7 @@ void handle_collisions ()
            return true;
          }         
          double random_probability=d_random();
-         printf("Current dist, interpolated pobability, random probability, : %f %f %f\n",xCurrent,interpolatedProbability,random_probability);      
+         //printf("Current dist, interpolated pobability, random probability, : %f %f %f\n",xCurrent,interpolatedProbability,random_probability);      
          if (random_probability>=interpolatedProbability) {
            queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
            return true;

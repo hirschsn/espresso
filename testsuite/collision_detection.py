@@ -553,8 +553,8 @@ class CollisionDetection(ut.TestCase):
             s.part.add(id=2*i,pos=(dx*i,0,0))
             s.part.add(id=2*i+1,pos=(dx*(i+0.3),0,0))
         
-	for p in s.part:
-	    print(p.id, p.pos) 
+	#for p in s.part:
+	    #print(p.id, p.pos) 
 	self.s.collision_detection.set_params(mode="bind_centers",distance=0.35*dx,bond_centers=self.H,collision_probability_vs_distance=tabProb, probability_dist_min=tabDist.min(), probability_dist_max=tabDist.max())
         s.integrator.run(0,recalc_forces=True)
         bonds=0
