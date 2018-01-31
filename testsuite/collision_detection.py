@@ -510,7 +510,7 @@ class CollisionDetection(ut.TestCase):
         self.assertEqual(expected_angle_bonds,found_angle_bonds)
             
     @ut.skipIf(s.cell_system.get_state()["n_nodes"]>1, "skipped due to more than one node" )
-    def test_1_total_collision_probability(self):
+    def test_total_collision_probability(self):
         s=self.s
         s.part.clear()
         n=1000
@@ -529,7 +529,7 @@ class CollisionDetection(ut.TestCase):
         self.assertAlmostEqual(float(bonds)/n,0.5,delta=0.1)
                 
 
-    def test_2_tabulated_collision_probability(self):
+    def test_tabulated_collision_probability(self):
         s=self.s
         s.part.clear()
         n=10000
