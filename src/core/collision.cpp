@@ -132,12 +132,12 @@ bool validate_collision_parameters() {
     runtimeErrorMsg() << "Ignore time has to be >=0. Method does not accept ignore time: " << collision_params.ignore_time; 
     return false;
   }
- /* 
-  if (collision_params.collision_probability_vs_distance.size()>0 && collision_params.collision_probability>0) {
+  
+  if (collision_params.collision_probability_vs_distance.size()>0 && collision_params.collision_probability<1) {
     runtimeErrorMsg() << "Collision probability can be either single value or a distance dependent vector. "; 
     return false;
   }
-*/
+
 
 #ifndef VIRTUAL_SITES_RELATIVE
   // The collision modes involving virutal istes also requires the creation of a
