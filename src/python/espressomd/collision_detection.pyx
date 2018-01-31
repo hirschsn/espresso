@@ -101,11 +101,11 @@ class CollisionDetection(ScriptInterfaceHelper):
             raise Exception("Collision mode must be specified via the mode keyword argument")
         
         if not ("collision_probability" in kwargs):
-            collision_probability=1
+            kwargs["collision_probability"]=1.0
 
 
         if not ("collision_probability_vs_distance" in kwargs):
-            collision_probability_vs_distance=[]
+            kwargs["collision_probability_vs_distance"]=[]
         
         
         # Completeness of parameter set
