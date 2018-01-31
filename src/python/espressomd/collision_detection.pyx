@@ -103,10 +103,12 @@ class CollisionDetection(ScriptInterfaceHelper):
         if not ("collision_probability" in kwargs):
             kwargs["collision_probability"]=1.0
 
-
-        if not ("collision_probability_vs_distance" in kwargs):
-            kwargs["collision_probability_vs_distance"]=[]
+        #if not ("collision_probability_vs_distance" in kwargs):
+        #    kwargs["collision_probability_vs_distance"]=[]
         
+        if not ("ignore_time" in kwargs):
+            kwargs["ignore_time"]=0.0
+
         
         # Completeness of parameter set
         if not (set(self._params_for_mode(kwargs["mode"])) <= set(kwargs.keys())):
