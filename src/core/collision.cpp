@@ -132,12 +132,12 @@ bool validate_collision_parameters() {
     runtimeErrorMsg() << "Ignore time has to be >=0. Method does not accept ignore time: " << collision_params.ignore_time; 
     return false;
   }
-  
-  if (collision_params.collision_probability_vs_distance.size()>0 && collision_params.collision_probability) {
-    runtimeErrorMsg() << "Collision probability can be either single value or a vector. "; 
+ /* 
+  if (collision_params.collision_probability_vs_distance.size()>0 && collision_params.collision_probability>0) {
+    runtimeErrorMsg() << "Collision probability can be either single value or a distance dependent vector. "; 
     return false;
   }
-
+*/
 
 #ifndef VIRTUAL_SITES_RELATIVE
   // The collision modes involving virutal istes also requires the creation of a
@@ -758,8 +758,9 @@ void handle_collisions ()
            queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
            return true;
          }         
-         printf("Current dist and probability, : %f %f %f\n",xCurrent,interpolatedProbability,d_random());      
-         if (d_random()>=interpolatedProbability) {
+         double random_probability=d_random();
+         printf("Current dist, interpolated pobability, random probability, : %f %f %f\n",xCurrent,interpolatedProbability,random_probability);      
+         if (random_probability>=interpolatedProbability) {
            queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
            return true;
          }
