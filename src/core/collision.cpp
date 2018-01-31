@@ -115,22 +115,26 @@ bool validate_collision_parameters() {
     }
   }
 
-
   if (collision_params.collision_probability<1 && n_nodes>1) {
-    runtimeErrorMsg() << "Collision probability <1 only works on a single node";
+    runtimeErrorMsg() << "Collision probability <1 only works on a single node. ";
   }
   if (collision_params.collision_probability<1 && collision_params.mode== COLLISION_MODE_BIND_THREE_PARTICLES) {
-    runtimeErrorMsg() << "Collision probability <1 does not work with three particle binding.";
+    runtimeErrorMsg() << "Collision probability <1 does not work with three particle binding. ";
     return false;
   }
 
   if (!(collision_params.collision_probability>0 && collision_params.collision_probability<=1.0+1E-10)) {
-    runtimeErrorMsg() << "Collision probability has to be >0 and <=1" <<collision_params.collision_probability; 
+    runtimeErrorMsg() << "Collision probability has to be >0 and <=1. Method does not accept value: " <<collision_params.collision_probability; 
     return false;
   }
 
   if (collision_params.ignore_time <0) {
-    runtimeErrorMsg() << "Ignore time has to be >=0"; 
+    runtimeErrorMsg() << "Ignore time has to be >=0. Method does not accept ignore time: " << collision_params.ignore_time; 
+    return false;
+  }
+  
+  if (collision_params.collision_probability_vs_distance.size()>0 && collision_params.collision_probability) {
+    runtimeErrorMsg() << "Collision probability can be either single value or a vector. "; 
     return false;
   }
 
@@ -141,7 +145,7 @@ bool validate_collision_parameters() {
   // If we don't have virtual sites, virtual site binding isn't possible.
   if ((collision_params.mode & COLLISION_MODE_VS) ||
       (collision_params.mode & COLLISION_MODE_GLUE_TO_SURF)) {
-    runtimeErrorMsg() << "Virtual sites based collisoin modes modes require "
+    runtimeErrorMsg() << "Virtual sites based collision modes modes require "
                          "the VIRTUAL_SITES feature";
     return false;
   }
