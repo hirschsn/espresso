@@ -760,6 +760,7 @@ void handle_collisions ()
            return true;
          }         
          double random_probability=d_random();
+         //printf("%f\n",random_probability);
          //printf("Current dist, interpolated pobability, random probability, : %f %f %f\n",xCurrent,interpolatedProbability,random_probability);      
          if (random_probability>=interpolatedProbability) {
            queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);

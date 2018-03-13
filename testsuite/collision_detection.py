@@ -531,7 +531,7 @@ class CollisionDetection(ut.TestCase):
     def test_tabulated_collision_probability(self):
         s=self.s
         s.part.clear()
-        n=10000
+        n=1000
         dx=s.box_l[0]/(n+1)
         tabDist=np.arange(0.05*dx, dx, 0.15*dx)
         tabProb=np.linspace(1.,0.0,num=len(tabDist)) 
@@ -550,8 +550,6 @@ class CollisionDetection(ut.TestCase):
             s.part.add(id=2*i,pos=(dx*i,0,0))
             s.part.add(id=2*i+1,pos=(dx*(i+0.3),0,0))
         
-	#for p in s.part:
-	    #print(p.id, p.pos) 
 	self.s.collision_detection.set_params(mode="bind_centers",distance=0.35*dx,bond_centers=self.H,collision_probability_vs_distance=tabProb, probability_dist_min=tabDist.min(), probability_dist_max=tabDist.max())
         s.integrator.run(0,recalc_forces=True)
         bonds=0
@@ -580,13 +578,12 @@ class CollisionDetection(ut.TestCase):
             for j in range (n): 
                 if (j != i):
                     Lij *= (dist2 - tabDist[j])/(tabDist[i] - tabDist[j])
-           
             lag2 += Lij*tabProb[i]
         print("lagrange interpolated value for dist2: ", dist2, lag2)
-  	print("average probability: ",(lag1+lag2)/2.0 )
+  	
+        print("average probability: ",(lag1+lag2)/2.0 )
         print(self.s.collision_detection.get_params())
         self.assertAlmostEqual(bPpart,(lag1+lag2)/2.,delta=0.1)
-        #self.assertAlmostEqual(bPpart,lag1,delta=0.1)
         
 
 if __name__ == "__main__":
