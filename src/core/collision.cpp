@@ -553,6 +553,19 @@ static void three_particle_binding_dd_do_search(
   }
 }
 
+Cell *responsible_collision_cell(Particle& p)
+{
+  auto c = cell_structure.position_to_cell(p.r.p.data());
+  if (c) {
+    return c;
+  } else if (!p.l.ghost) {
+    // Old pos must lie within the cell system
+    return cell_structure.position_to_cell(p.l.p_old.data());
+  } else {
+    return nullptr;
+  }
+}
+
 // Goes through the collision queue and for each pair in it
 // looks for a third particle by using the domain decomposition
 // cell system. If found, it performs three particle binding
@@ -567,11 +580,12 @@ void three_particle_binding_domain_decomposition(
 
       Particle &p1 = *local_particles[c.pp1];
       Particle &p2 = *local_particles[c.pp2];
-      auto cell1 = cell_structure.position_to_cell(p1.r.p.data());
-      auto cell2 = cell_structure.position_to_cell(p2.r.p.data());
+      auto cell1 = responsible_collision_cell(p1);
+      auto cell2 = responsible_collision_cell(p2);
 
-      three_particle_binding_dd_do_search(cell1, p1, p2);
-      if (cell1 != cell2)
+      if (cell1)
+        three_particle_binding_dd_do_search(cell1, p1, p2);
+      if (cell2 && cell1 != cell2)
         three_particle_binding_dd_do_search(cell2, p1, p2);
 
     } // If local particles exist
