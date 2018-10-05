@@ -31,6 +31,7 @@
 #include "lbboundaries/initialize.hpp"
 #include "mpiio/initialize.hpp"
 #include "observables/initialize.hpp"
+#include "flowfield/initialize.hpp"
 
 #include "ComFixed.hpp"
 
@@ -58,6 +59,7 @@ void initialize() {
   VirtualSites::initialize();
   MPIIO::initialize();
   CollisionDetection::initialize();
+  Flowfield::initialize();
 
   ScriptInterface::register_new<Testing::VariantTester>(
       "Testing::VariantTester");

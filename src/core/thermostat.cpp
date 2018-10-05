@@ -86,9 +86,62 @@ double nptiso_pref3;
 double nptiso_pref4;
 #endif
 
+#ifdef USE_FLOWFIELD
+double langevin_pref3;
+std::vector<double> velu, velv, velw;
+std::string ff_name_u, ff_name_v, ff_name_w;
+
+struct CFile {
+  CFile(const char *filename, const char *mode) {
+    if (!(fp = fopen(filename, mode))) {
+      fprintf(stderr, "[%i] Cannot open file: `%s'.\n", this_node, filename);
+      errexit();
+    }
+  }
+  ~CFile() { fclose(fp); }
+  operator FILE *() { return fp; }
+private:
+  FILE *fp;
+};
+
+void fluid_init()
+{
+  if (ff_name_u == "") {
+    if (this_node == 0)
+      fprintf(stderr, "Warning: fluid_init(): Flow field file names not set. Omitting loading flow fields.\n");
+    return;
+    //errexit();
+  }
+  CFile fp(ff_name_u.c_str(), "rb"), fq(ff_name_v.c_str(), "rb"), fr(ff_name_w.c_str(), "rb");
+  const size_t ffs = static_cast<size_t>(FLOWFIELD_SIZE);
+  const size_t nelem = ffs * ffs * ffs;
+  size_t relem;
+
+  velu.resize(nelem);
+  velv.resize(nelem);
+  velw.resize(nelem);
+
+  if ((relem = fread(velu.data(), sizeof(double), nelem, fp)) != nelem) {
+    fprintf(stderr, "[%i] Error: Flowfield \"%s\" has too few elements. Expected: %zu. Read: %zu\n", this_node, ff_name_u.c_str(), nelem, relem);
+    errexit();
+  }
+  if ((relem = fread(velv.data(), sizeof(double), nelem, fq)) != nelem) {
+    fprintf(stderr, "[%i] Error: Flowfield \"%s\" has too few elements. Expected: %zu. Read: %zu\n", this_node, ff_name_v.c_str(), nelem, relem);
+    errexit();
+  }
+  if ((relem = fread(velw.data(), sizeof(double), nelem, fr)) != nelem) {
+    fprintf(stderr, "[%i] Error: Flowfield \"%s\" has too few elements. Expected: %zu. Read: %zu\n", this_node, ff_name_w.c_str(), nelem, relem);
+    errexit();
+  }
+}
+#endif // USE_FLOWFIELD
+
 void thermo_init_langevin() {
   langevin_pref1 = -langevin_gamma;
   langevin_pref2 = sqrt(24.0 * temperature / time_step * langevin_gamma);
+#ifdef USE_FLOWFIELD
+  langevin_pref3 = time_step;
+#endif
 
   /* If gamma_rotation is not set explicitly,
      use the linear one. */
@@ -127,6 +180,10 @@ void thermo_init_langevin() {
       stderr, "%d: thermo_init_langevin: langevin_pref1=%f, langevin_pref2=%f",
       this_node, langevin_pref1, langevin_pref2));
 #endif
+
+#ifdef USE_FLOWFIELD
+  fluid_init();
+#endif // USE_FLOWFIELD
 }
 
 #ifdef NPT
