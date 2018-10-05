@@ -45,11 +45,12 @@ class AnalyzeEnergy(ut.TestCase):
         self.system.thermostat.set_langevin(kT=0., gamma=1.)
         self.system.bonded_inter.add(self.harmonic)
 
+
     def setUp(self):
         self.system.part.clear()
         self.system.part.add(id=0, pos=[1, 2, 2], type=0)
         self.system.part.add(id=1, pos=[5, 2, 2], type=0)
-
+    
     def test_kinetic(self):
         self.system.part[0].pos = [1, 2, 2]
         self.system.part[1].pos = [5, 2, 2]

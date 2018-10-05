@@ -40,6 +40,12 @@ class Cluster(ScriptInterfaceHelper):
     longest_distance():
         Longest distance between any combination of two particles in the cluster
 
+    radius_of_gyration(): 
+        Radius of gyration of the cluster
+
+    maximum_radius(): 
+        Maximum radius between a particle and cluster's center of mass
+    
     fractal_dimension(dr=None):
         estimates the cluster's fractal dimension by fitting the number of particles
         :math:`n` in spheres of growing radius around the cetner of mass
@@ -49,8 +55,7 @@ class Cluster(ScriptInterfaceHelper):
         Return value: (fractal_dimension, mean_square_residual)
     """
     _so_name = "ClusterAnalysis::Cluster"
-    _so_bind_methods = ("particle_ids", "size", "longest_distance",
-                        "radius_of_gyration", "fractal_dimension", "center_of_mass")
+    _so_bind_methods = ("particle_ids", "particles", "size", "center_of_mass", "longest_distance","maximum_radius","radius_of_gyration", "fractal_dimension", "center_of_mass")
 
     _so_creation_policy = "LOCAL"
 

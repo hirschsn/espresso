@@ -135,6 +135,12 @@ cdef class System(object):
             self.non_bonded_inter = interactions.NonBondedInteractions()
             self.part = particle_data.ParticleList()
             self.thermostat = Thermostat()
+            IF COLLISION_DETECTION==1:
+                self.collision_detection = CollisionDetection(mode="off")
+            IF CUDA:
+                self.cuda_init_handle = cuda_init.CudaInitHandle()
+
+            self.comfixed = ComFixed()
             IF VIRTUAL_SITES:
                 self._active_virtual_sites_handle = ActiveVirtualSitesHandle(
                     implementation=VirtualSitesOff())

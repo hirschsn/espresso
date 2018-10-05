@@ -43,6 +43,9 @@ public:
     if (method == "longest_distance") {
       return m_cluster->longest_distance();
     }
+    if (method=="maximum_radius") {
+        return m_cluster->maximum_radius();
+    }
     if (method == "radius_of_gyration") {
       return m_cluster->radius_of_gyration();
     }

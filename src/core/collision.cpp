@@ -29,6 +29,12 @@
 #include "particle_data.hpp"
 #include "rotation.hpp"
 #include "utils/mpi/all_compare.hpp"
+#include "domain_decomposition.hpp"
+#include <deque>
+#include "random.hpp" 
+
+
+
 #include "virtual_sites/VirtualSitesRelative.hpp"
 
 #ifdef COLLISION_DETECTION_DEBUG
@@ -44,6 +50,37 @@ typedef struct {
   int pp1; // 1st particle id
   int pp2; // 2nd particle id
 } collision_struct;
+
+
+typedef struct {
+  double remove_time;
+  int pp1;
+  int pp2;
+} ignore_pair_struct;
+
+std::deque<ignore_pair_struct> ignore_queue;
+
+void queue_ignore_pair(double forget_at, int pp1, int pp2) {
+  ignore_pair_struct i ={forget_at,pp1,pp2};
+  ignore_queue.emplace_back(i);
+ // printf("Que ignore pair: %f %d %d\n",forget_at,pp1,pp2);
+}
+
+void remove_outdated_from_ignore_queue() {
+  if (ignore_queue.empty()) return;
+
+  while (ignore_queue[0].remove_time<sim_time) {
+    ignore_queue.pop_front();
+    if (ignore_queue.empty()) return;
+  }
+}
+
+bool pair_in_ignore_queue(int pp1,int pp2) {
+  return std::any_of(ignore_queue.begin(),ignore_queue.end(),
+     [&pp1,&pp2](ignore_pair_struct &i) {
+       return ((pp1 == i.pp1 && pp2 == i.pp2) || ((pp1 == i.pp2) && (pp2 == i.pp1)));
+     });
+}
 
 // During force calculation, colliding particles are recorded in the queue
 // The queue is processed after force calculation, when it is save to add
@@ -82,13 +119,38 @@ bool validate_collision_parameters() {
     }
   }
 
+  if (collision_params.collision_probability<1 && n_nodes>1) {
+    runtimeErrorMsg() << "Collision probability <1 only works on a single node. ";
+  }
+  if (collision_params.collision_probability<1 && collision_params.mode== COLLISION_MODE_BIND_THREE_PARTICLES) {
+    runtimeErrorMsg() << "Collision probability <1 does not work with three particle binding. ";
+    return false;
+  }
+
+  if (!(collision_params.collision_probability>0 && collision_params.collision_probability<=1.0+1E-10)) {
+    runtimeErrorMsg() << "Collision probability has to be >0 and <=1. Method does not accept value: " <<collision_params.collision_probability; 
+    return false;
+  }
+
+  if (collision_params.ignore_time <0) {
+    runtimeErrorMsg() << "Ignore time has to be >=0. Method does not accept ignore time: " << collision_params.ignore_time; 
+    return false;
+  }
+  
+  if (collision_params.collision_probability_vs_distance.size()>0 && collision_params.collision_probability<1) {
+    runtimeErrorMsg() << "collision_params.collision_probability_vs_distance.size() : "<< collision_params.collision_probability_vs_distance.size() << "and probability : "<< collision_params.collision_probability;
+    runtimeErrorMsg() << "Collision probability can be either single value or a distance dependent vector. "; 
+    return false;
+  }
+
+
 #ifndef VIRTUAL_SITES_RELATIVE
   // The collision modes involving virtual sites also require the creation of a
   // bond between the colliding
   // If we don't have virtual sites, virtual site binding isn't possible.
   if ((collision_params.mode & COLLISION_MODE_VS) ||
       (collision_params.mode & COLLISION_MODE_GLUE_TO_SURF)) {
-    runtimeErrorMsg() << "Virtual sites based collisoin modes modes require "
+    runtimeErrorMsg() << "Virtual sites based collision modes modes require "
                          "the VIRTUAL_SITES feature";
     return false;
   }
@@ -215,12 +277,19 @@ bool validate_collision_parameters() {
 
   recalc_forces = 1;
   rebuild_verletlist = 1;
+  ignore_queue.clear();
 
   return true;
 }
 
 //* Allocate memory for the collision queue /
-void prepare_local_collision_queue() { local_collision_queue.clear(); }
+void prepare_local_collision_queue()
+{
+  remove_outdated_from_ignore_queue();
+  local_collision_queue.clear();
+}
+
+
 
 void queue_collision(const int part1, const int part2) {
   local_collision_queue.push_back({part1, part2});
@@ -537,8 +606,111 @@ void three_particle_binding_domain_decomposition(
   }   // Loop over total collisions
 }
 
+
+/** @brief Calculate the closest possible distance between two particles
+    and the time when does it occur assuming the two are moving linearly 
+    along their velocity vectors  */
+inline std::pair<double, double> predict_min_distance_between_particles(const Particle *const p1, const Particle *const p2){
+  double dr[3], dv[3];
+  get_mi_vector(dr, p2->r.p, p1->r.p);       //get particles relative position
+  vecsub(p2->m.v, p1->m.v, dv);              //get particles relative velocity
+  
+  double A=sqrlen(dv);
+  double B=2.0*scalar(dr,dv);
+  double C=sqrlen(dr);
+
+  double tMin=(-B)/(2.*A);
+  double closestDist=sqrt(A*pow(tMin,2)+B*tMin+C);
+  
+  return {tMin,closestDist};
+}
+
+
+/** @brief Check if collision between two particles will happen,
+    if the two are approaching each other (positive time)  */
+inline bool collision_prediction(const Particle *const p1, const Particle *const p2){
+  std::pair<double,double>timeAndDist;
+  timeAndDist=predict_min_distance_between_particles(p1, p2);
+
+  return (timeAndDist.second <= collision_params.distance and timeAndDist.first > 0); 
+}
+
+
+/** @brief Interpolate collision probability value between xMin and xMax for the given x-distance from the cluster's center of mass */
+double interpolate_collision_probability(double x) {
+  double invstepsize=(collision_params.collision_probability_vs_distance.size()-1)/(collision_params.probability_dist_max-collision_params.probability_dist_min);
+  assert(x<=collision_params.probability_dist_max);
+  return Utils::linear_interpolation(collision_params.collision_probability_vs_distance, invstepsize, collision_params.probability_dist_min, x);
+} 
+
+
 // Handle the collisions stored in the queue
-void handle_collisions() {
+void handle_collisions ()
+{
+  // Remove ignored pairs from the collision queue
+  if (collision_params.collision_probability <1) {
+    local_collision_queue.erase(std::remove_if(
+      local_collision_queue.begin(), local_collision_queue.end(),
+      [](collision_struct &c) {
+        bool res= pair_in_ignore_queue(c.pp1,c.pp2);
+        if (res) {
+           //printf("Ignoring %d %d\n",c.pp1,c.pp2);
+        }
+        return res;
+      }), local_collision_queue.end());
+   }
+  // Test for collision probability. Remove collisions which fail the random criterion
+  // and queue them in the ignore_pair_queue
+  local_collision_queue.erase(std::remove_if(
+      local_collision_queue.begin(), local_collision_queue.end(),
+      [](collision_struct &c) {
+       if (d_random() >= collision_params.collision_probability) {
+         if (collision_params.ignore_time>0) {
+           queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
+         }
+         return true;
+       } 
+       else
+         return false;
+      }),local_collision_queue.end());
+
+  // Test for precomputed distance dependent collision probabilities. Remove collisions which tht are within tMin fro particles that are closer than the distMin
+  // and queue them in the ignore_pair_queue
+       if (collision_params.collision_probability_vs_distance.size()>0 and (collision_params.probability_dist_max-collision_params.probability_dist_min > std::numeric_limits<double>::epsilon())) { 
+  
+      local_collision_queue.erase(std::remove_if(
+      local_collision_queue.begin(), local_collision_queue.end(),
+      [](collision_struct &c) {
+
+         double xCurrentVec[3];
+         get_mi_vector(xCurrentVec, local_particles[c.pp1]->r.p, local_particles[c.pp2]->r.p);
+         double xCurrent= sqrt(sqrlen(xCurrentVec));
+         double interpolatedProbability=interpolate_collision_probability(xCurrent);
+         // at current distance between particles pp1 and pp2, xCurrent, interpolated tabulated collision probability is interpolatedProbability
+
+         Particle *const p1 = local_particles[c.pp1];
+         Particle *const p2 = local_particles[c.pp2];
+         std::pair<double,double>timeAndDist;
+         timeAndDist=predict_min_distance_between_particles(p1, p2);
+         double tMin=timeAndDist.first;
+         double distMin=timeAndDist.second;
+    
+         if (timeAndDist.first<0){
+           queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
+           return true;
+         }         
+         double random_probability=d_random();
+         //printf("%f\n",random_probability);
+         //printf("Current dist, interpolated pobability, random probability, : %f %f %f\n",xCurrent,interpolatedProbability,random_probability);      
+         if (random_probability>=interpolatedProbability) {
+           queue_ignore_pair(sim_time+collision_params.ignore_time, c.pp1,c.pp2);
+           return true;
+         }
+         return false;
+       }), local_collision_queue.end());
+    }
+
+
 
   if (collision_params.exception_on_collision) {
     for (auto &c : local_collision_queue) {
@@ -558,6 +730,7 @@ void handle_collisions() {
       if (local_particles[c.pp1]->l.ghost) {
         std::swap(c.pp1, c.pp2);
       }
+      //printf("Binding %d %d\n",c.pp1,c.pp2);
       int bondG[2];
       bondG[0] = collision_params.bond_centers;
       bondG[1] = c.pp2;
