@@ -171,6 +171,12 @@ typedef struct {
   /** Pointer array to particle lists to communicate. */
   Cell **part_lists;
 
+  /** Tag used to send and receive in ASYNCHRONOUS case.
+   * When using asynchronous communication it is possible to send more than one
+   * message to the same receiver. These can be distinguished by their tag.
+   */
+  int tag;
+
   /** if \ref GhostCommunicator::data_parts has \ref GHOSTTRANS_POSSHFTD, then
      this is the shift vector. Normally this a integer multiple of the box
      length. The shift is done on the sender side */
@@ -186,6 +192,12 @@ typedef struct {
   /** number of communication steps. */
   int num;
 
+  /** Synchronous or asynchronous communication?
+   * If this flag is set \ref GHOST_PREFETCH and \ref GHOST_PSTSTORE are
+   * ignored. Also, asynchronous communication does not support \ref GHOST_BCAST.
+   */
+  bool async;
+
   /** List of ghost communications. */
   GhostCommunication *comm;
 
@@ -198,10 +210,11 @@ typedef struct {
 /*@{*/
 
 /** Initialize a communicator. */
-void prepare_comm(GhostCommunicator *comm, int data_parts, int num);
+void prepare_comm(GhostCommunicator *comm, int data_parts, int num, bool async = false);
 
 /** Free a communicator. */
 void free_comm(GhostCommunicator *comm);
+
 
 /** Initialize ghosts. */
 void ghost_init();
