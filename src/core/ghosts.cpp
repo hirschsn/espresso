@@ -97,8 +97,6 @@ void serialize(Archive &ar, CommBuf &cb, unsigned int file_version) {
 }
 
 
-static MPI_Op MPI_FORCES_SUM;
-
 /** whether the ghosts should also have velocity information, e. g. for DPD or
    RATTLE. You need this whenever you need the relative velocity of two
    particles. NO CHANGES OF THIS VALUE OUTSIDE OF \ref on_ghost_flags_change
@@ -787,11 +785,6 @@ void ghost_communicator(GhostCommunicator *gc)
     ghost_communicator_async(gc, data_parts);
   else
     ghost_communicator_sync(gc, data_parts);
-}
-
-void ghost_init()
-{
-  MPI_Op_create(reduce_forces_sum, 1, &MPI_FORCES_SUM);
 }
 
 /** Go through \ref ghost_cells and remove the ghost entries from \ref
