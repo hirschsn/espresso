@@ -112,11 +112,6 @@ void prepare_comm(GhostCommunicator *comm, int data_parts, int num, bool async) 
   comm->data_parts = data_parts;
   comm->async = async;
 
-  /* if ghosts should have uptodate velocities, they have to be updated like positions
-     (except for shifting...) */
-  if (ghosts_have_v && (data_parts & GHOSTTRANS_POSITION))
-    comm->data_parts |= GHOSTTRANS_MOMENTUM;
-
   GHOST_TRACE(fprintf(stderr, "%d: prepare_comm, data_parts = %d\n", this_node,
                       comm->data_parts));
 
