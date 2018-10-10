@@ -774,13 +774,16 @@ static void ghost_communicator_sync(GhostCommunicator *gc, int data_parts) {
   }
 }
 
-void ghost_communicator(GhostCommunicator *gc)
-{
+void ghost_communicator(GhostCommunicator *gc) {
   int data_parts = gc->data_parts;
   /* if ghosts should have uptodate velocities, they have to be updated like
    positions (except for shifting...) */
   if (ghosts_have_v && (data_parts & GHOSTTRANS_POSITION))
     data_parts |= GHOSTTRANS_MOMENTUM;
+  ghost_communicator(gc, data_parts);
+}
+
+void ghost_communicator(GhostCommunicator *gc, int data_parts) {
   if (gc->async)
     ghost_communicator_async(gc, data_parts);
   else
