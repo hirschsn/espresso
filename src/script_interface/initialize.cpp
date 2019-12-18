@@ -30,6 +30,7 @@
 #include "collision_detection/initialize.hpp"
 #include "lbboundaries/initialize.hpp"
 #include "mpiio/initialize.hpp"
+#include "runtime_capture/initialize.hpp"
 #include "observables/initialize.hpp"
 
 #include "ComFixed.hpp"
@@ -56,6 +57,7 @@ void initialize() {
   PairCriteria::initialize();
   VirtualSites::initialize();
   MPIIO::initialize();
+  RuntimeCapture::initialize();
   CollisionDetection::initialize();
 
   ScriptInterface::register_new<ComFixed>("ComFixed");

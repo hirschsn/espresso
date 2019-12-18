@@ -19,6 +19,8 @@
 #ifndef ALGORITHM_LINK_CELL_HPP
 #define ALGORITHM_LINK_CELL_HPP
 
+#include "_runtime_capture.hpp"
+
 namespace Algorithm {
 
 /**
@@ -31,7 +33,9 @@ template <typename CellIterator, typename ParticleKernel, typename PairKernel,
 void link_cell(CellIterator first, CellIterator last,
                ParticleKernel &&particle_kernel, PairKernel &&pair_kernel,
                DistanceFunction &&distance_function) {
+  int cellidx = 0;
   for (; first != last; ++first) {
+    _runtime_capture::record_cell _{cellidx++};
     for (int i = 0; i != first->n; i++) {
       auto &p1 = first->part[i];
 

@@ -226,6 +226,10 @@ cdef variant_to_python_object(const Variant & value) except +:
         return get_value[vector[int]](value)
     if is_type[vector[double]](value):
         return get_value[vector[double]](value)
+    if is_type[vector[vector[size_t]]](value):
+        return get_value[vector[vector[size_t]]](value)
+    if is_type[vector[vector[double]]](value):
+        return get_value[vector[vector[double]]](value)
     if is_type[Vector3d](value):
         return make_array_locked(get_value[Vector3d](value))
     if is_type[ObjectId](value):

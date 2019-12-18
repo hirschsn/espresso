@@ -151,6 +151,18 @@ template <> struct get_value_helper<std::vector<double>, void> {
   }
 };
 
+template <> struct get_value_helper<std::vector<std::vector<size_t>>, void> {
+  std::vector<std::vector<size_t>> operator()(Variant const &v) const {
+    return boost::apply_visitor(GetVectorOrEmpty<std::vector<size_t>>{}, v);
+  }
+};
+
+template <> struct get_value_helper<std::vector<std::vector<double>>, void> {
+  std::vector<std::vector<double>> operator()(Variant const &v) const {
+    return boost::apply_visitor(GetVectorOrEmpty<std::vector<double>>{}, v);
+  }
+};
+
 /* This allows direct retrieval of a shared_ptr to the object from
    an ObjectId variant. If the type is a derived type, the type is
    also checked.

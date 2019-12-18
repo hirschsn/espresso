@@ -1,4 +1,5 @@
 set(EspressoCore_SRC
+  _runtime_capture.cpp
   accumulators.cpp
   cells.cpp
   collision.cpp

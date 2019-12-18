@@ -44,6 +44,7 @@ constexpr const None none{};
  */
 using Variant = boost::make_recursive_variant<
     None, bool, int, double, std::string, std::vector<int>, std::vector<double>,
+    std::vector<std::vector<size_t>>, std::vector<std::vector<double>>,
     ObjectId, std::vector<boost::recursive_variant_>, Utils::Vector2d,
     Utils::Vector3d, Utils::Vector4d>::type;
 
