@@ -75,6 +75,9 @@
 #include <callgrind.h>
 #endif
 
+extern double _integrate_vv_time;
+double _integrate_vv_time = 0.0;
+
 int integ_switch = INTEG_METHOD_NVT;
 
 int n_verlet_updates = 0;
@@ -164,6 +167,8 @@ void integrator_step_2(ParticleRange &particles) {
 
 int integrate(int n_steps, int reuse_forces) {
   ESPRESSO_PROFILER_CXX_MARK_FUNCTION;
+
+  _integrate_vv_time -= MPI_Wtime();
 
   /* Prepare the integrator */
   on_integration_start();
@@ -306,6 +311,9 @@ int integrate(int n_steps, int reuse_forces) {
     synchronize_npt_state(n_steps);
   }
 #endif
+
+  _integrate_vv_time += MPI_Wtime();
+
   return integrated_steps;
 }
 

@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from . import script_interface
+import numpy as np
 
 
 class PyMetric:
@@ -107,3 +108,25 @@ class GenericDD:
 def supported_grid_types():
     l = librepa_supported_grid_types()
     return [t.decode() for t in l]
+
+
+class PyMeasurement:
+    def __init__(self):
+        self.__instance = script_interface.PScriptInterface(
+            "ScriptInterface::Measurement::MeasurementScript")
+
+    def reset(self, which_var):
+        self.__instance.call_method("reset", var=which_var)
+
+    def reset_all(self):
+        self.__instance.call_method("reset_all")
+
+    def get_data_var(self, which_var):
+        return self.__instance.call_method("get", var=which_var)
+
+    def get(self, which_var):
+        data = self.get_data_var(which_var)
+        return (np.min(data), np.average(data), np.max(data))
+
+    def get_all(self):
+        return {k: self.get(k) for k in ["integrate", "force_calc", "short_range"]}

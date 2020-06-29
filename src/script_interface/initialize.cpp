@@ -31,6 +31,7 @@
 #include "generic_dd/initialize.hpp"
 #include "lbboundaries/initialize.hpp"
 #include "mpiio/initialize.hpp"
+#include "measurement/initialize.hpp"
 #include "observables/initialize.hpp"
 
 #include "ComFixed.hpp"
@@ -59,6 +60,7 @@ void initialize() {
   MPIIO::initialize();
   CollisionDetection::initialize();
   GenericDD::initialize();
+  Measurement::initialize();
 
   ScriptInterface::register_new<ComFixed>("ComFixed");
 }

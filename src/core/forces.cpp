@@ -46,6 +46,11 @@
 
 #include <cassert>
 
+extern double _force_calc_time;
+double _force_calc_time = 0.0;
+extern double _srloop_time;
+double _srloop_time = 0.0;
+
 ActorList forceActors;
 
 void init_forces(const ParticleRange &particles) {
@@ -81,6 +86,7 @@ void init_forces_ghosts(const ParticleRange &particles) {
 
 void force_calc(CellStructure &cell_structure) {
   ESPRESSO_PROFILER_CXX_MARK_FUNCTION;
+  _force_calc_time -= MPI_Wtime();
 
   espressoSystemInterface.update();
 
@@ -116,6 +122,7 @@ void force_calc(CellStructure &cell_structure) {
   auto const dipole_cutoff = INACTIVE_CUTOFF;
 #endif
 
+  _srloop_time -= MPI_Wtime();
   short_range_loop(
       [](Particle &p) { add_single_particle_force(p); },
       [](Particle &p1, Particle &p2, Distance const &d) {
@@ -127,6 +134,7 @@ void force_calc(CellStructure &cell_structure) {
       },
       VerletCriterion{skin, cell_structure.min_range, coulomb_cutoff,
                       dipole_cutoff, collision_detection_cutoff()});
+  _srloop_time += MPI_Wtime();
 
   Constraints::constraints.add_forces(particles, sim_time);
 
@@ -171,6 +179,8 @@ void force_calc(CellStructure &cell_structure) {
 
   // mark that forces are now up-to-date
   recalc_forces = false;
+
+  _force_calc_time += MPI_Wtime();
 }
 
 void calc_long_range_forces(const ParticleRange &particles) {
