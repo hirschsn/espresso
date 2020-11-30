@@ -34,7 +34,6 @@
 
 #include <mpi.h>
 #include <utils/Span.hpp>
-#include <utils/mpi/waitany.hpp>
 #include <utils/serialization/memcpy_archive.hpp>
 
 #include <boost/range/algorithm/copy.hpp>
@@ -325,7 +324,7 @@ static void ghost_communicator_async(GhostCommunicator *gcr,
   // Need the full "gc->num" elements here (although we might omit transfers
   // below) as the wait_any code below needs to be able to associate an index to
   // "reqs" with a element in "commbufs".
-  std::vector<Utils::Mpi::RequestPair> reqs(gcr->comm.size());
+  std::vector<boost::mpi::request> reqs(2 * gcr->comm.size());
 
   for (int i = 0; i < gcr->comm.size(); i++) {
     GhostCommunication &ghost_comm = gcr->comm[i];
@@ -340,15 +339,17 @@ static void ghost_communicator_async(GhostCommunicator *gcr,
     switch (ghost_comm.type & GHOST_JOBMASK) {
     case GHOST_RECV:
       prepare_recv_buffer(commbufs[i], ghost_comm, data_parts);
-      reqs[i] = {comm_cart.irecv(ghost_comm.node, 0x37, commbufs[i].data(),
-                                 commbufs[i].size()),
-                 comm_cart.irecv(ghost_comm.node, 0x38, commbufs[i].bonds())};
+      reqs[2 * i] = comm_cart.irecv(ghost_comm.node, 0x37, commbufs[i].data(),
+                                    commbufs[i].size());
+      reqs[2 * i + 1] =
+          comm_cart.irecv(ghost_comm.node, 0x38, commbufs[i].bonds());
       break;
     case GHOST_SEND:
       prepare_send_buffer(commbufs[i], ghost_comm, data_parts);
-      reqs[i] = {comm_cart.isend(ghost_comm.node, 0x37, commbufs[i].data(),
-                                 commbufs[i].size()),
-                 comm_cart.isend(ghost_comm.node, 0x38, commbufs[i].bonds())};
+      reqs[2 * i] = comm_cart.isend(ghost_comm.node, 0x37, commbufs[i].data(),
+                                    commbufs[i].size());
+      reqs[2 * i + 1] =
+          comm_cart.isend(ghost_comm.node, 0x38, commbufs[i].bonds());
       break;
     default:
       fprintf(
@@ -358,24 +359,29 @@ static void ghost_communicator_async(GhostCommunicator *gcr,
     }
   }
 
-  for (int i = 0; i < gcr->comm.size(); i++) {
-    auto it = Utils::Mpi::wait_any<Utils::Mpi::Status::Ignore>(std::begin(reqs),
-                                                               std::end(reqs))
-                  .iterator;
+  for (int i = 0; i < 2 * gcr->comm.size(); i++) {
+    auto it = boost::mpi::wait_any(std::begin(reqs), std::end(reqs)).second;
     // Some transmissions might have been omitted. Could also be counted in the
     // above send/recv loop but here it is less code.
     if (it == std::end(reqs))
       break;
 
     auto rno = std::distance(std::begin(reqs), it);
-    GhostCommunication &ghost_comm = gcr->comm[rno];
+    size_t sibling_rno = rno % 2 == 0 ? rno + 1 : rno - 1;
+
+    // Continue only if both siblings (request for data and for bonds) are done
+    if (reqs[sibling_rno].active())
+      continue;
+
+    auto comm_no = rno / 2;
+    GhostCommunication &ghost_comm = gcr->comm[comm_no];
     if ((ghost_comm.type & GHOST_JOBMASK) != GHOST_RECV)
       continue;
 
     if (data_parts == GHOSTTRANS_FORCE)
-      add_forces_from_recv_buffer(commbufs[rno], ghost_comm);
+      add_forces_from_recv_buffer(commbufs[comm_no], ghost_comm);
     else
-      put_recv_buffer(commbufs[rno], ghost_comm, data_parts);
+      put_recv_buffer(commbufs[comm_no], ghost_comm, data_parts);
   }
 
   comm_cart.barrier();

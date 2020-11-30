@@ -30,7 +30,6 @@
 #include "errorhandling.hpp"
 #include "grid.hpp" // fold_position()
 #include <utils/Vector.hpp>
-#include <utils/mpi/waitany.hpp>
 
 namespace {
 
@@ -242,9 +241,9 @@ static void exchange_particles_end(std::vector<Cell *> &modified_cells) {
 
   // Wait for receives and immediately process them
   for (int i = 0; i < exchg::nneigh; i++) {
-    const auto p = Utils::Mpi::wait_any<Utils::Mpi::Status::Ignore>(
-                       std::begin(exchg::rreq), std::end(exchg::rreq))
-                       .iterator;
+    const auto p =
+        boost::mpi::wait_any(std::begin(exchg::rreq), std::end(exchg::rreq))
+            .second;
     const auto idx = std::distance(std::begin(exchg::rreq), p);
     insert_particles(std::move(exchg::recvbuf[idx]), modified_cells);
   }
